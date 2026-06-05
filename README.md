@@ -100,6 +100,43 @@ python -c "import torch; print(torch.__version__); print(torch.cuda.is_available
 such as 4 GB, start with smaller models and expect larger models to run out of
 memory.
 
+### GPU Setup on Ubuntu
+
+Install Python venv support and create an isolated environment:
+
+```bash
+sudo apt update
+sudo apt install -y python3-venv python3-pip
+python3 -m venv annihilation-env
+source annihilation-env/bin/activate
+python -m pip install -U pip
+python -m pip install -U annihilate-llm
+```
+
+For NVIDIA GPUs, confirm the driver can see the card:
+
+```bash
+nvidia-smi
+```
+
+If Annihilate says no GPU is detected, replace CPU-only PyTorch with a CUDA
+build inside the active environment:
+
+```bash
+python -m pip uninstall -y torch torchvision torchaudio
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+```
+
+Verify PyTorch can see CUDA:
+
+```bash
+python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no cuda')"
+```
+
+`torch.cuda.is_available()` should print `True`. If `nvidia-smi` is missing or
+fails, install or repair the NVIDIA driver first, then reopen the terminal and
+activate the environment again.
+
 ---
 
 ## ⚙️ Configuration
