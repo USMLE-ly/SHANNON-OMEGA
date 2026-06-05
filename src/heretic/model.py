@@ -2,11 +2,11 @@
 # Copyright (C) 2025-2026  Philipp Emanuel Weidmann <pew@worldwidemann.com> + contributors
 
 import math
-from importlib import import_module
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Type, cast
 
+import bitsandbytes as bnb
 import torch
 import torch.linalg as LA
 import torch.nn.functional as F
@@ -34,17 +34,6 @@ from transformers.generation import (
 from .config import QuantizationMethod, RowNormalization, Settings
 from .system import empty_cache
 from .utils import Prompt, batchify, print
-
-
-def require_bitsandbytes() -> Any:
-    try:
-        return import_module("bitsandbytes")
-    except ImportError as exc:
-        raise RuntimeError(
-            'The "bnb_4bit" quantization option requires bitsandbytes. '
-            'Install it with "pip install annihilation-llm-tjcrims0nx[bnb]" '
-            "on a supported platform, or use quantization = \"none\"."
-        ) from exc
 
 
 def get_model_class(
@@ -253,7 +242,6 @@ class Model:
             BitsAndBytesConfig or None
         """
         if self.settings.quantization == QuantizationMethod.BNB_4BIT:
-            require_bitsandbytes()
             # BitsAndBytesConfig expects a torch.dtype, not a string.
             if dtype == "auto":
                 compute_dtype = torch.bfloat16
@@ -534,7 +522,6 @@ class Model:
                         # 4-bit quantization.
                         # This cast is always valid. Type inference fails here because the
                         # bnb.functional module is not found by ty for some reason.
-                        bnb = require_bitsandbytes()
                         W = cast(
                             Tensor,
                             bnb.functional.dequantize_4bit(  # ty:ignore[possibly-missing-attribute]
