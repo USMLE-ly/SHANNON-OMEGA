@@ -38,7 +38,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -r --ignore-unmatch .
           git checkout upstream/${{ steps.upstream-branch.outputs.branch }} -- .
-          git checkout HEAD -- .github .gitattributes README.md logo.jpeg pyproject.toml src/heretic/model.py
+          git checkout HEAD -- .github .gitattributes README.md logo.jpeg pyproject.toml src/heretic/analyzer.py src/heretic/main.py src/heretic/model.py src/heretic/system.py src/heretic/utils.py
           if git diff --cached --quiet; then
             echo "No upstream changes to sync."
           else

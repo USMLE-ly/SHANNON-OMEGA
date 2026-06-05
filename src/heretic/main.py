@@ -162,11 +162,14 @@ def run():
     ):
         os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
-    # Modified "Pagga" font from https://budavariam.github.io/asciiart-text/
-    print(f"[cyan]█░█░█▀▀░█▀▄░█▀▀░▀█▀░█░█▀▀[/]  v{version('heretic-llm')}")
-    print("[cyan]█▀█░█▀▀░█▀▄░█▀▀░░█░░█░█░░[/]")
+    package_version = version("annihilate-llm")
+    print(r"[purple]                  _ _     _ _       _       [/]")
+    print(r"[purple]  __ _ _ __  _ __ (_) |__ (_) | __ _| |_ ___ [/]")
+    print(r"[purple] / _` | '_ \| '_ \| | '_ \| | |/ _` | __/ _ \[/]")
+    print(r"[purple]| (_| | | | | | | | | | | | | | (_| | ||  __/[/]")
+    print(r"[purple] \__,_|_| |_|_| |_|_|_| |_|_|_|\__,_|\__\___|[/]")
     print(
-        "[cyan]▀░▀░▀▀▀░▀░▀░▀▀▀░░▀░░▀░▀▀▀[/]  [blue underline]https://github.com/p-e-w/heretic[/]"
+        f"[purple]annihilate[/] v{package_version}  [blue underline]https://github.com/tjcrims0nx/annihilation-llm[/]"
     )
     print()
 
@@ -202,7 +205,7 @@ def run():
 
         print()
         print(
-            "Run [bold]heretic --help[/] or see [bold]config.default.toml[/] for details about configuration parameters."
+            "Run [bold]annihilate --help[/] or see [bold]config.default.toml[/] for details about configuration parameters."
         )
         return
 

@@ -42,7 +42,7 @@ def require_bitsandbytes() -> Any:
     except ImportError as exc:
         raise RuntimeError(
             'The "bnb_4bit" quantization option requires bitsandbytes. '
-            'Install it with "pip install annihilation-llm-tjcrims0nx[bnb]" '
+            'Install it with "pip install annihilate-llm[bnb]" '
             "on a supported platform, or use quantization = \"none\"."
         ) from exc
 

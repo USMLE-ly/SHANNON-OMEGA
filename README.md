@@ -46,10 +46,10 @@ with packages installed globally.
 python -m venv annihilation-env
 .\annihilation-env\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install -U annihilation-llm-tjcrims0nx
+python -m pip install -U annihilate-llm
 
 # Decensor any model automatically
-annihilation Qwen/Qwen3-4B-Instruct-2507
+annihilate Qwen/Qwen3-4B-Instruct-2507
 ```
 
 ```bash
@@ -57,10 +57,10 @@ annihilation Qwen/Qwen3-4B-Instruct-2507
 python -m venv annihilation-env
 source annihilation-env/bin/activate
 python -m pip install -U pip
-python -m pip install -U annihilation-llm-tjcrims0nx
+python -m pip install -U annihilate-llm
 
 # Decensor any model automatically
-annihilation Qwen/Qwen3-4B-Instruct-2507
+annihilate Qwen/Qwen3-4B-Instruct-2507
 ```
 
 ### Requirements
@@ -68,7 +68,7 @@ annihilation Qwen/Qwen3-4B-Instruct-2507
 - **Python**: 3.10+
 - **PyTorch**: 2.2+ (hardware-specific installation required)
 - **Hardware**: GPU recommended (CUDA, ROCm, XPU, or MPS)
-- **Optional**: Install `annihilation-llm-tjcrims0nx[bnb]` only on platforms
+- **Optional**: Install `annihilate-llm[bnb]` only on platforms
   that support bitsandbytes if you want `bnb_4bit` quantization.
 
 ---
@@ -79,7 +79,7 @@ Annihilation works out of the box with defaults, but offers extensive configurat
 
 ```bash
 # View all options
-annihilation --help
+annihilate --help
 
 # Or use a config file
 # Rename config.default.toml to config.toml and modify as needed
@@ -128,7 +128,7 @@ After decensoring, you can:
 Install with research dependencies for visualization tools:
 
 ```bash
-pip install -U annihilation-llm-tjcrims0nx[research]
+pip install -U annihilate-llm[research]
 ```
 
 Features:

@@ -323,7 +323,7 @@ def get_readme_intro(
 
     return f"""# This is a decensored version of {
         model_link
-    }, made using [Heretic](https://github.com/p-e-w/heretic) v{version("heretic-llm")}
+    }, made using [Annihilate](https://github.com/tjcrims0nx/annihilation-llm) v{version("annihilate-llm")}
 {reproducibility_instructions}
 ## Abliteration parameters
 
@@ -477,16 +477,16 @@ def generate_reproduce_readme(
 > [!IMPORTANT]
 > **Git installation**
 >
-> This system installed Heretic from a Git repository: {repo_info}
+> This system installed Annihilate from a Git repository: {repo_info}
 >
-> To reproduce the model, you must install Heretic from this exact repository and commit.
+> To reproduce the model, you must install Annihilate from this exact repository and commit.
 """
         elif version_info.origin == "Local":
             origin_warning = """
 > [!WARNING]
 > **Local code**
 >
-> This system installed Heretic from a local directory or wheel. Uncommitted or experimental code may have been executed.
+> This system installed Annihilate from a local directory or wheel. Uncommitted or experimental code may have been executed.
 >
 > Reproducibility *cannot* be guaranteed in this environment.
 """
@@ -495,7 +495,7 @@ def generate_reproduce_readme(
 > [!WARNING]
 > **Non-standard installation**
 >
-> This system installed Heretic from an unknown non-standard source.
+> This system installed Annihilate from an unknown non-standard source.
 >
 > Reproducibility *cannot* be guaranteed in this environment.
 """
@@ -511,7 +511,7 @@ def generate_reproduce_readme(
 
     return f"""# Reproduction guide
 
-This directory contains the necessary information and assets to reproduce the results obtained during this Heretic run.{heterogeneous_warning}{origin_warning}
+This directory contains the necessary information and assets to reproduce the results obtained during this Annihilate run.{heterogeneous_warning}{origin_warning}
 
 ## Models
 
@@ -532,7 +532,7 @@ This directory contains the necessary information and assets to reproduce the re
 
 {system_report}## Environment
 
-- **Heretic:** v{version_info.version}{f" (Origin: {version_info.origin})" if version_info.origin else ""}
+- **Annihilate:** v{version_info.version}{f" (Origin: {version_info.origin})" if version_info.origin else ""}
 - **PyTorch:** {pytorch_version}
 - **Other dependencies:** See [`requirements.txt`](requirements.txt).
 
@@ -546,11 +546,11 @@ This directory contains the necessary information and assets to reproduce the re
 
 ## How to reproduce
 
-{system_instructions}1. Install the exact version of Heretic indicated in the **Environment** section above, from its original source.
+{system_instructions}1. Install the exact version of Annihilate indicated in the **Environment** section above, from its original source.
 1. Install the packages listed in `requirements.txt`: `pip install -r requirements.txt`
 1. Install the correct version of PyTorch: `{pytorch_install_command}`
 1. Place the provided `config.toml` in your working directory.
-1. Run Heretic without any additional arguments: `heretic`
+1. Run Annihilate without any additional arguments: `annihilate`
 1. Wait for the run to finish, then select trial **{trial.user_attrs["index"]}** and export the model.
 1. Verify that the weight files have been exactly reproduced by comparing their SHA-256 hashes against those in `SHA256SUMS`: `sha256sum -c SHA256SUMS` (or look at the hashes online if you uploaded to Hugging Face)
 

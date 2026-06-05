@@ -25,7 +25,7 @@ jobs:
         id: meta
         run: |
           VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/annihilation-llm-tjcrims0nx"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/annihilate-llm"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
@@ -35,7 +35,7 @@ jobs:
       - name: Build package bundle image
         run: |
           docker build \
-            --label "org.opencontainers.image.title=annihilation-llm-tjcrims0nx" \
+            --label "org.opencontainers.image.title=annihilate-llm" \
             --label "org.opencontainers.image.description=Python wheel and source distribution bundle" \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
             --label "org.opencontainers.image.version=${{ steps.meta.outputs.version }}" \

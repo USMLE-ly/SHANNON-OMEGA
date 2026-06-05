@@ -41,8 +41,8 @@ class Analyzer:
             print(
                 (
                     "[red]Research dependencies not found. Printing residual geometry requires "
-                    "installing Heretic with the optional research feature, i.e., "
-                    'using "pip install -U heretic-llm\\[research]".[/]'
+                    "installing Annihilate with the optional research feature, i.e., "
+                    'using "pip install -U annihilate-llm\\[research]".[/]'
                 )
             )
             return
@@ -167,8 +167,8 @@ class Analyzer:
             print(
                 (
                     "[red]Research dependencies not found. Plotting residuals requires "
-                    "installing Heretic with the optional research feature, i.e., "
-                    'using "pip install -U heretic-llm\\[research]".[/]'
+                    "installing Annihilate with the optional research feature, i.e., "
+                    'using "pip install -U annihilate-llm\\[research]".[/]'
                 )
             )
             return
