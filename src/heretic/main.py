@@ -163,17 +163,17 @@ def run():
         os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
     # Modified "Pagga" font from https://budavariam.github.io/asciiart-text/
-    print(f"[cyan]▀▄▀▄▀▄▀▄▀▄▀▄▀▄▀▄[/]  v{version('annihilation-llm')}")
-    print("[cyan]▀▄▀▄▀▄▀▄▀▄▀▄▀▄▀▄[/]")
+    print(f"[cyan]█░█░█▀▀░█▀▄░█▀▀░▀█▀░█░█▀▀[/]  v{version('heretic-llm')}")
+    print("[cyan]█▀█░█▀▀░█▀▄░█▀▀░░█░░█░█░░[/]")
     print(
-        "[cyan]▀▄▀▄▀▄▀▄▀▄▀▄▀▄▀▄[/]  [blue underline]https://github.com/annihilation-llm/annihilation[/]"
+        "[cyan]▀░▀░▀▀▀░▀░▀░▀▀▀░░▀░░▀░▀▀▀[/]  [blue underline]https://github.com/p-e-w/heretic[/]"
     )
     print()
 
     if (
         # There is at least one argument (argv[0] is the program name).
         len(sys.argv) > 1
-        # Annihilation is being invoked in standard (model processing) mode.
+        # Heretic is being invoked in standard (model processing) mode.
         and "--collect-reproducibles" not in sys.argv
         # No model has been explicitly provided.
         and "--model" not in sys.argv
@@ -184,7 +184,7 @@ def run():
         sys.argv.insert(-1, "--model")
 
     # Work around the "model" argument being required
-    # when Annihilation is invoked in a non-processing mode.
+    # when Heretic is invoked in a non-processing mode.
     if "--collect-reproducibles" in sys.argv and "--model" not in sys.argv:
         sys.argv.extend(["--model", ""])
 
@@ -195,12 +195,14 @@ def run():
     except ValidationError as error:
         print(f"[red]Configuration contains [bold]{error.error_count()}[/] errors:[/]")
 
-        for error in error.errors():
-            print(f"[bold]{error['loc'][0]}[/]: [yellow]{error['msg']}[/]")
+        for error_detail in error.errors():
+            print(
+                f"[bold]{error_detail['loc'][0]}[/]: [yellow]{error_detail['msg']}[/]"
+            )
 
         print()
         print(
-            "Run [bold]annihilation --help[/] or see [bold]config.default.toml[/] for details about configuration parameters."
+            "Run [bold]heretic --help[/] or see [bold]config.default.toml[/] for details about configuration parameters."
         )
         return
 
@@ -606,7 +608,7 @@ def run():
         ),
         directions=[StudyDirection.MINIMIZE, StudyDirection.MINIMIZE],
         storage=storage,
-        study_name="annihilation",
+        study_name="heretic",
         load_if_exists=True,
     )
 
@@ -813,6 +815,8 @@ def run():
                                 del merged_model
                                 empty_cache()
                                 model.tokenizer.save_pretrained(save_directory)
+                                if model.processor is not None:
+                                    model.processor.save_pretrained(save_directory)
                                 reset_trial_model()
 
                             print(f"Model saved to [bold]{save_directory}[/].")
@@ -837,7 +841,7 @@ def run():
 
                             repo_id = prompt_text(
                                 "Name of repository:",
-                                default=f"{user['name']}/{Path(settings.model).name}-annihilation",
+                                default=f"{user['name']}/{Path(settings.model).name}-heretic",
                             )
 
                             visibility = prompt_select(
@@ -870,7 +874,7 @@ def run():
                             if is_reproducible:
                                 print(
                                     (
-                                        "Annihilation can add information to the repository that allows others to reproduce the model. "
+                                        "Heretic can add information to the repository that allows others to reproduce the model. "
                                         "This is optional, but valuable to the community as both a learning tool and to preserve computational work already done. "
                                         "Guaranteeing reproducibility requires basic system information (Python and OS version, CPU and GPU/accelerator info) "
                                         "as tensor operations can give different results in different system environments. "
@@ -923,6 +927,12 @@ def run():
                                     private=private,
                                     token=token,
                                 )
+                                if model.processor is not None:
+                                    model.processor.push_to_hub(
+                                        repo_id,
+                                        private=private,
+                                        token=token,
+                                    )
                                 reset_trial_model()
 
                             if is_hf_path(settings.model):
@@ -942,7 +952,7 @@ def run():
                                     card.data = ModelCardData()
                                 if card.data.tags is None:
                                     card.data.tags = []
-                                card.data.tags.append("annihilation")
+                                card.data.tags.append("heretic")
                                 card.data.tags.append("uncensored")
                                 card.data.tags.append("decensored")
                                 card.data.tags.append("abliterated")

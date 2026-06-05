@@ -8,6 +8,8 @@ import tqdm.auto
 from rich.progress import Progress
 
 
+# A class that provides the same interface as tqdm,
+# but displays progress bars using Rich.
 class TqdmShim(tqdm.tqdm):
     def __init__(self, *args: Any, **kwargs: Any):
         self.rich_progress = Progress(transient=True)
@@ -17,6 +19,8 @@ class TqdmShim(tqdm.tqdm):
             total=kwargs.get("total", None),
         )
 
+        # Chain up to the parent constructor to ensure that the internal state of the superclass
+        # is correctly initialized, which some methods that we don't override might rely on.
         super().__init__(*args, **kwargs)
 
     def display(self, *args: Any, **kwargs: Any):
@@ -32,5 +36,5 @@ class TqdmShim(tqdm.tqdm):
 
 
 def patch_tqdm():
-    tqdm.tqdm = TqdmShim
-    tqdm.auto.tqdm = TqdmShim
+    tqdm.tqdm = TqdmShim  # ty:ignore[invalid-assignment]
+    tqdm.auto.tqdm = TqdmShim  # ty:ignore[invalid-assignment]

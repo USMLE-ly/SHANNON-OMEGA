@@ -32,17 +32,17 @@ class Analyzer:
 
     def print_residual_geometry(self):
         try:
-            from geom_median.torch import (
+            from geom_median.torch import (  # ty:ignore[unresolved-import]
                 compute_geometric_median,
             )
-            from sklearn.metrics import silhouette_score
+            from sklearn.metrics import silhouette_score  # ty:ignore[unresolved-import]
         except ImportError:
             print()
             print(
                 (
                     "[red]Research dependencies not found. Printing residual geometry requires "
-                    "installing Annihilation with the optional research feature, i.e., "
-                    'using "pip install -U annihilation-llm\\[research]".[/]'
+                    "installing Heretic with the optional research feature, i.e., "
+                    'using "pip install -U heretic-llm\\[research]".[/]'
                 )
             )
             return
@@ -156,19 +156,19 @@ class Analyzer:
 
     def plot_residuals(self):
         try:
-            import imageio.v3 as iio
-            import matplotlib.pyplot as plt
-            from geom_median.numpy import (
+            import imageio.v3 as iio  # ty:ignore[unresolved-import]
+            import matplotlib.pyplot as plt  # ty:ignore[unresolved-import]
+            from geom_median.numpy import (  # ty:ignore[unresolved-import]
                 compute_geometric_median,
             )
-            from pacmap import PaCMAP
+            from pacmap import PaCMAP  # ty:ignore[unresolved-import]
         except ImportError:
             print()
             print(
                 (
                     "[red]Research dependencies not found. Plotting residuals requires "
-                    "installing Annihilation with the optional research feature, i.e., "
-                    'using "pip install -U annihilation-llm\\[research]".[/]'
+                    "installing Heretic with the optional research feature, i.e., "
+                    'using "pip install -U heretic-llm\\[research]".[/]'
                 )
             )
             return
@@ -201,9 +201,16 @@ class Analyzer:
             good_residuals_2d = residuals_2d[:n_good_residuals]
             bad_residuals_2d = residuals_2d[n_good_residuals:]
 
+            # Important: These are the medians of the 2D-projected residuals,
+            #            not the projections of the medians of the residuals.
+            #            Their only purpose is to rotate the individual plots
+            #            into a consistent orientation. They are not suitable
+            #            for being plotted themselves.
             good_anchor = compute_geometric_median(good_residuals_2d).median
             bad_anchor = compute_geometric_median(bad_residuals_2d).median
 
+            # Rotate points to make the line connecting the medians horizontal,
+            # with the median of the good residuals on the left.
             direction = bad_anchor - good_anchor
             angle = -np.arctan2(direction[1], direction[0])
             cosine = np.cos(angle)
@@ -305,6 +312,10 @@ class Analyzer:
             durations.append(LAYER_FRAME_DURATION)
 
             if layer_index < len(layer_residuals_2d):
+                # The first frame of the transition is the layer frame created above.
+                # The last frame is the next layer frame, created in the next iteration of the outer loop.
+                # The following are the intermediate frames.
+                # There are a total of N_TRANSITION_FRAMES frame changes in the transition.
                 for frame_index in range(1, N_TRANSITION_FRAMES):
                     image_path = (
                         base_path / f"layer_{layer_index:03}_frame_{frame_index:03}.png"
@@ -329,6 +340,9 @@ class Analyzer:
                     images.append(iio.imread(image_path))
                     durations.append(TRANSITION_FRAME_DURATION)
 
+                    # Delete the image file containing the animation frame.
+                    # We have already read its contents and it serves no purpose
+                    # other than building the animation.
                     image_path.unlink()
 
         print("* Generating animation...")

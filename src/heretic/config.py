@@ -13,6 +13,12 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+# !!!IMPORTANT!!!
+#
+# Any settings added to the classes defined in this module
+# must be evaluated for privacy implications and have
+# exclude=True set in their field definitions if appropriate.
+
 
 class QuantizationMethod(str, Enum):
     NONE = "none"
@@ -22,6 +28,7 @@ class QuantizationMethod(str, Enum):
 class RowNormalization(str, Enum):
     NONE = "none"
     PRE = "pre"
+    # POST = "post"  # Theoretically possible, but provides no advantage.
     FULL = "full"
 
 
@@ -35,9 +42,15 @@ class DatasetSpecification(BaseModel):
         description="Hugging Face commit hash of the dataset.",
     )
 
-    split: str = Field(description="Portion of the dataset to use.")
+    split: str | None = Field(
+        default=None,
+        description="Portion of the dataset to use. Required for datasets, optional for plain text files.",
+    )
 
-    column: str = Field(description="Column in the dataset that contains the prompts.")
+    column: str | None = Field(
+        default=None,
+        description="Column in the dataset that contains the prompts. Required for datasets, ignored for plain text files.",
+    )
 
     prefix: str = Field(
         default="",
@@ -100,7 +113,7 @@ class Settings(BaseSettings):
         default=None,
         description=(
             "If this directory path is set, then instead of abliterating a model, "
-            "download all reproduce.json files from public Annihilation model repositories "
+            "download all reproduce.json files from public Heretic model repositories "
             "on Hugging Face, and store them in that directory for archival purposes."
         ),
         exclude=True,
@@ -108,9 +121,15 @@ class Settings(BaseSettings):
 
     dtypes: list[str] = Field(
         default=[
+            # In practice, "auto" almost always means bfloat16.
             "auto",
+            # If that doesn't work (e.g. on pre-Ampere hardware), fall back to float16.
             "float16",
+            # If "auto" resolves to float32, and that fails because it is too large,
+            # and float16 fails due to range issues, try bfloat16.
             "bfloat16",
+            # If neither of those work, fall back to float32 (which will of course fail
+            # if that was the dtype "auto" resolved to).
             "float32",
         ],
         description=(
@@ -151,6 +170,7 @@ class Settings(BaseSettings):
     trust_remote_code: bool | None = Field(
         default=None,
         description="Whether to trust remote code when loading the model.",
+        # For security reasons, we don't store this setting.
         exclude=True,
     )
 
@@ -162,6 +182,8 @@ class Settings(BaseSettings):
     max_batch_size: int = Field(
         default=128,
         description="Maximum batch size to try when automatically determining the optimal batch size.",
+        # When storing a settings object, the batch size is already fixed,
+        # either determined by the automatic mechanism or by explicit user choice.
         exclude=True,
     )
 
@@ -181,18 +203,22 @@ class Settings(BaseSettings):
 
     chain_of_thought_skips: list[tuple[str, str]] = Field(
         default=[
+            # Most thinking models.
             (
                 "<think>",
-                "<think>",
+                "<think></think>",
             ),
+            # gpt-oss.
             (
                 "<|channel|>analysis<|message|>",
                 "<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>final<|message|>",
             ),
+            # Unknown, suggested by user.
             (
                 "<thought>",
                 "<thought></thought>",
             ),
+            # Unknown, suggested by user.
             (
                 "[THINK]",
                 "[THINK][/THINK]",
@@ -203,6 +229,8 @@ class Settings(BaseSettings):
             "the Chain-of-Thought block in responses, so that evaluation happens "
             "at the start of the actual response."
         ),
+        # When storing a settings object, the response prefix is already fixed,
+        # either determined by the automatic mechanism or by explicit user choice.
         exclude=True,
     )
 
@@ -390,6 +418,7 @@ class Settings(BaseSettings):
 
     refusal_markers: list[str] = Field(
         default=[
+            "disclaimer",
             "sorry",
             "i can'",
             "i cant",
@@ -488,7 +517,7 @@ class Settings(BaseSettings):
                 cli_implicit_flags=True,
                 cli_kebab_case=True,
             ),
-            EnvSettingsSource(settings_cls, env_prefix="ANNIHILATION_"),
+            EnvSettingsSource(settings_cls, env_prefix="HERETIC_"),
             dotenv_settings,
             file_secret_settings,
             TomlConfigSettingsSource(settings_cls, toml_file="config.toml"),

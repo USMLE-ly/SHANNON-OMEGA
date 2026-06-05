@@ -19,17 +19,19 @@ def collect_reproducibles(path: str):
     api = HfApi()
 
     models = api.list_models(
-        filter=["annihilation", "reproducible"],
+        filter=["heretic", "reproducible"],
         sort="created_at",
     )
 
     found = 0
     downloaded = 0
 
+    # We're only downloading tiny files, so the progress bars are just noise.
     disable_progress_bars()
 
     try:
         for model in models:
+            # Ignore repositories containing quantizations.
             if model.tags is not None and "gguf" in model.tags:
                 continue
 
@@ -42,6 +44,8 @@ def collect_reproducibles(path: str):
                 "reproduce/reproduce.json",
                 expand=True,
             )
+            # The reproduce.json file might not exist in the repository
+            # despite the relevant tags being present.
             if not paths_info:
                 print(" [yellow]no reproduce.json found[/]")
                 continue

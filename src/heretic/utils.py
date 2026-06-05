@@ -22,6 +22,7 @@ from datasets import DatasetDict, ReadInstruction, load_dataset, load_from_disk
 from datasets.config import DATASET_STATE_JSON_FILENAME
 from datasets.download.download_manager import DownloadMode
 from datasets.utils.info_utils import VerificationMode
+from huggingface_hub.utils import validate_repo_id
 from optuna import Trial
 from psutil import Process
 from questionary import Choice, Style
@@ -31,7 +32,7 @@ from .config import DatasetSpecification, Settings
 from .system import (
     get_accelerator_info_dict,
     get_cpu_info_dict,
-    get_annihilation_version_info,
+    get_heretic_version_info,
     get_python_env_info_dict,
     get_requirements_dict,
     is_xpu_available,
@@ -64,11 +65,15 @@ def print_memory_usage():
 
 
 def is_notebook() -> bool:
+    # Check for specific environment variables (Colab, Kaggle).
+    # This is necessary because when running as a subprocess (e.g. !heretic),
+    # get_ipython() might not be available or might not reflect the notebook environment.
     if os.getenv("COLAB_GPU") or os.getenv("KAGGLE_KERNEL_RUN_TYPE"):
         return True
 
+    # Check IPython shell type (for library usage).
     try:
-        from IPython import get_ipython
+        from IPython import get_ipython  # ty:ignore[unresolved-import]
 
         shell = get_ipython()
         if shell is None:
@@ -166,19 +171,35 @@ def format_duration(seconds: float) -> str:
 
 
 def is_hf_path(path: str) -> bool:
-    return (
-        not path.startswith("/")
-        and not path.endswith("/")
-        and path.count("/") == 1
-        and "\\" not in path
-        and not Path(path).exists()
-    )
+    """Checks whether a path likely refers to a Hugging Face repository."""
+
+    # Match Transformers: existing local paths take precedence over Hub lookup,
+    # even if the path string is also a valid repository ID.
+    if Path(path).exists():
+        return False
+
+    validate_repo_id(path)
+    return True
 
 
 @dataclass
 class Prompt:
     system: str
     user: str
+
+
+def get_split_slice(split_str: str, length: int) -> tuple[int, int]:
+    """Resolves a split specification into absolute (start, end) indices."""
+
+    # The split name is the part before the slice, e.g. "train" in "train[:400]".
+    split_name = split_str.split("[")[0]
+    # Associate the split with its number of examples (lines).
+    name_to_length = {split_name: length}
+    # Convert the instructions to absolute indices and select the first one.
+    absolute_instruction = ReadInstruction.from_spec(split_str).to_absolute(
+        name_to_length
+    )[0]
+    return absolute_instruction.from_, absolute_instruction.to
 
 
 def load_prompts(
@@ -188,32 +209,53 @@ def load_prompts(
     path = specification.dataset
     split_str = specification.split
 
-    if is_hf_path(path):
-        dataset = load_dataset(
-            path,
-            revision=specification.commit,
-            split=split_str,
-        )
+    if os.path.isfile(path):
+        # Plain text file with one prompt per line. Empty lines are ignored.
+        with open(path, encoding="utf-8") as file:
+            prompts = [line.strip() for line in file if line.strip()]
+
+        # The split is optional for text files. When given, it selects a subset
+        # of the lines using slice notation (e.g. "[:400]"). A synthetic split
+        # name is prepended because ReadInstruction expects a named split.
+        if split_str is not None:
+            start, end = get_split_slice(f"_{split_str}", len(prompts))
+            prompts = prompts[start:end]
     else:
-        if Path(path, DATASET_STATE_JSON_FILENAME).exists():
+        # All dataset sources require an explicit split and column.
+        if split_str is None:
+            raise ValueError(f'The "split" field is required for datasets: {path}')
+
+        if specification.column is None:
+            raise ValueError(f'The "column" field is required for datasets: {path}')
+
+        if is_hf_path(path):
+            dataset = load_dataset(
+                path,
+                revision=specification.commit,
+                split=split_str,
+            )
+        elif Path(path, DATASET_STATE_JSON_FILENAME).exists():
+            # Dataset saved with datasets.save_to_disk; needs special handling.
+            # Path should be the subdirectory for a particular split.
             dataset = load_from_disk(path)
             assert not isinstance(dataset, DatasetDict), (
                 "Loading dataset dicts is not supported"
             )
-            instruction = ReadInstruction.from_spec(split_str)
-            split_name = str(dataset.split)
-            name2len = {split_name: len(dataset)}
-            abs_instruction = instruction.to_absolute(name2len)[0]
-            dataset = dataset[abs_instruction.from_ : abs_instruction.to]
+            # Parse the split instructions and apply them.
+            start, end = get_split_slice(split_str, len(dataset))
+            dataset = dataset[start:end]
         else:
+            # Path should be a local directory.
             dataset = load_dataset(
                 path,
                 split=split_str,
+                # Don't require the number of examples (lines) per split to be pre-defined.
                 verification_mode=VerificationMode.NO_CHECKS,
+                # But also don't use cached data, as the dataset may have changed on disk.
                 download_mode=DownloadMode.FORCE_REDOWNLOAD,
             )
 
-    prompts = list(dataset[specification.column])
+        prompts = list(dataset[specification.column])
 
     if specification.prefix:
         prompts = [f"{specification.prefix} {prompt}" for prompt in prompts]
@@ -266,6 +308,7 @@ def get_readme_intro(
     if is_hf_path(settings.model):
         model_link = f"[{settings.model}](https://huggingface.co/{settings.model})"
     else:
+        # Hide the path, which may contain private information.
         model_link = "a model"
 
     if contains_reproducibility_information:
@@ -280,7 +323,7 @@ def get_readme_intro(
 
     return f"""# This is a decensored version of {
         model_link
-    }, made using [Annihilation](https://github.com/annihilation-llm/annihilation) v{version("annihilation-llm")}
+    }, made using [Heretic](https://github.com/p-e-w/heretic) v{version("heretic-llm")}
 {reproducibility_instructions}
 ## Abliteration parameters
 
@@ -310,10 +353,14 @@ def get_readme_intro(
 
 
 def generate_config_toml(settings: Settings) -> str:
+    """Serializes the full Settings object to TOML."""
+
     return tomli_w.dumps(settings.model_dump(exclude_none=True))
 
 
 def generate_requirements_txt() -> str:
+    """Collects direct project dependencies as a formatted string."""
+
     requirements = [
         f"{package}=={version}" for package, version in get_requirements_dict().items()
     ]
@@ -321,6 +368,8 @@ def generate_requirements_txt() -> str:
 
 
 def set_seed(seed: int):
+    """Sets the seed for all RNGs."""
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -348,6 +397,8 @@ def generate_reproduce_readme(
     trial: Trial,
     include_system_information: bool,
 ) -> str:
+    """Generates the contents of a README.md for the reproduce/ folder."""
+
     heterogeneous_warning = ""
 
     if include_system_information:
@@ -417,7 +468,7 @@ def generate_reproduce_readme(
         system_report = ""
         system_instructions = ""
 
-    version_info = get_annihilation_version_info()
+    version_info = get_heretic_version_info()
     origin_warning = ""
     if not version_info.is_standard_pypi:
         if version_info.origin and version_info.origin.startswith("Git"):
@@ -426,16 +477,16 @@ def generate_reproduce_readme(
 > [!IMPORTANT]
 > **Git installation**
 >
-> This system installed Annihilation from a Git repository: {repo_info}
+> This system installed Heretic from a Git repository: {repo_info}
 >
-> To reproduce the model, you must install Annihilation from this exact repository and commit.
+> To reproduce the model, you must install Heretic from this exact repository and commit.
 """
         elif version_info.origin == "Local":
             origin_warning = """
 > [!WARNING]
 > **Local code**
 >
-> This system installed Annihilation from a local directory or wheel. Uncommitted or experimental code may have been executed.
+> This system installed Heretic from a local directory or wheel. Uncommitted or experimental code may have been executed.
 >
 > Reproducibility *cannot* be guaranteed in this environment.
 """
@@ -444,7 +495,7 @@ def generate_reproduce_readme(
 > [!WARNING]
 > **Non-standard installation**
 >
-> This system installed Annihilation from an unknown non-standard source.
+> This system installed Heretic from an unknown non-standard source.
 >
 > Reproducibility *cannot* be guaranteed in this environment.
 """
@@ -460,7 +511,7 @@ def generate_reproduce_readme(
 
     return f"""# Reproduction guide
 
-This directory contains the necessary information and assets to reproduce the results obtained during this Annihilation run.{heterogeneous_warning}{origin_warning}
+This directory contains the necessary information and assets to reproduce the results obtained during this Heretic run.{heterogeneous_warning}{origin_warning}
 
 ## Models
 
@@ -481,7 +532,7 @@ This directory contains the necessary information and assets to reproduce the re
 
 {system_report}## Environment
 
-- **Annihilation:** v{version_info.version}{f" (Origin: {version_info.origin})" if version_info.origin else ""}
+- **Heretic:** v{version_info.version}{f" (Origin: {version_info.origin})" if version_info.origin else ""}
 - **PyTorch:** {pytorch_version}
 - **Other dependencies:** See [`requirements.txt`](requirements.txt).
 
@@ -495,16 +546,16 @@ This directory contains the necessary information and assets to reproduce the re
 
 ## How to reproduce
 
-{system_instructions}1. Install the exact version of Annihilation indicated in the **Environment** section above, from its original source.
+{system_instructions}1. Install the exact version of Heretic indicated in the **Environment** section above, from its original source.
 1. Install the packages listed in `requirements.txt`: `pip install -r requirements.txt`
 1. Install the correct version of PyTorch: `{pytorch_install_command}`
 1. Place the provided `config.toml` in your working directory.
-1. Run Annihilation without any additional arguments: `annihilation`
+1. Run Heretic without any additional arguments: `heretic`
 1. Wait for the run to finish, then select trial **{trial.user_attrs["index"]}** and export the model.
 1. Verify that the weight files have been exactly reproduced by comparing their SHA-256 hashes against those in `SHA256SUMS`: `sha256sum -c SHA256SUMS` (or look at the hashes online if you uploaded to Hugging Face)
 
 > [!TIP]
-> To use the included Optuna study journal `{checkpoint_filename}`, place it in the checkpoints directory (usually `checkpoints/`) before running Annihilation.
+> To use the included Optuna study journal `{checkpoint_filename}`, place it in the checkpoints directory (usually `checkpoints/`) before running Heretic.
 >
 > This allows you to export other models from the Pareto front, or to run additional trials without having to re-run the stored trials.
 """
@@ -517,14 +568,16 @@ def generate_reproduce_json(
     uploaded_model_hashes: dict[str, str],
     include_system_information: bool,
 ) -> str:
-    version_info = get_annihilation_version_info()
+    """Generates the contents of a reproduce.json file for the reproduce/ folder."""
+
+    version_info = get_heretic_version_info()
 
     data = {
-        "version": "1",
+        "version": "1",  # Version number of the reproduce.json file format, to allow for future changes.
         "timestamp": timestamp,
-        "system": None,
+        "system": None,  # Defined here to preserve insertion order.
         "environment": {
-            "annihilation": {
+            "heretic": {
                 "version": version_info.version,
                 "is_standard_pypi": version_info.is_standard_pypi,
                 "metadata": version_info.metadata,
@@ -563,9 +616,12 @@ def generate_reproduce_json(
 
 
 def generate_sha256sums(hashes: dict[str, str]) -> str:
+    """Generates GNU Coreutils compatible SHA256SUMS file content."""
+
     lines = []
 
     for filename, sha256 in sorted(hashes.items()):
+        # Use '*' to indicate binary mode for model weights.
         lines.append(f"{sha256} *{filename}")
 
     return "\n".join(lines) + "\n"
@@ -584,8 +640,10 @@ def create_reproduce_folder(
 
     checkpoint_filename = Path(checkpoint_path).name
 
+    # Fetch commit hash for the base model.
     settings.model_commit = huggingface_hub.model_info(settings.model).sha
 
+    # Fetch commit hashes for all HF datasets to ensure reproducibility.
     for spec in [
         settings.good_prompts,
         settings.bad_prompts,
@@ -594,6 +652,7 @@ def create_reproduce_folder(
     ]:
         spec.commit = huggingface_hub.dataset_info(spec.dataset).sha
 
+    # Strip microseconds and timezone for a clean format.
     timestamp = (
         datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None).isoformat()
     )
@@ -635,6 +694,7 @@ def create_reproduce_folder(
         encoding="utf-8",
     )
 
+    # Copy Optuna study journal.
     checkpoint_file = Path(checkpoint_path)
     if checkpoint_file.exists():
         (reproduce_dir / checkpoint_file.name).write_bytes(checkpoint_file.read_bytes())
@@ -654,6 +714,7 @@ def upload_reproduce_folder(
     if not info.siblings:
         raise RuntimeError("Could not fetch uploaded model hashes.")
 
+    # For weights, we only care about safetensors.
     weight_extensions = (".safetensors",)
 
     uploaded_model_hashes = {}
