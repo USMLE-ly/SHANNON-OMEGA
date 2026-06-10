@@ -189,3 +189,91 @@ class TestSalesDetection:
     def test_short_queries(self):
         assert self.plugin._is_sales_query("hi") == False
         assert self.plugin._is_sales_query("sales") == True
+
+# ─── Test TextHumanizer ─────────────────────────────────────────
+
+class TestHumanizer:
+    def test_humanizer_basic(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process("Hello world")
+        assert result == "Hello world"
+    
+    def test_humanizer_removes_ai_filler(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process("It is important to note that this matters.")
+        assert "important to note" not in result.lower()
+    
+    def test_humanizer_removes_leverage(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process("We should leverage our tools.")
+        assert "leverage" not in result
+        assert "use" in result
+    
+    def test_humanizer_removes_foster(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process("We must foster innovation.")
+        assert "foster" not in result
+    
+    def test_humanizer_removes_in_order_to(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process("In order to succeed, work hard.")
+        assert "in order to" not in result.lower()
+    
+    def test_humanizer_capitalizes_sentences(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process("in order to grow. it is important to learn.")
+        assert result[0].isupper()
+        assert ". " in result
+    
+    def test_humanizer_template_format(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.format_template("**Guarantee:** Strong guarantee works.")
+        assert "❤️" in result or "**Guarantee:**" in result
+    
+    def test_humanizer_removes_crucial(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process("This is crucial for success.")
+        assert "crucial" not in result
+    
+    def test_humanizer_removes_empower(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process("This will empower our team.")
+        assert "empower" not in result
+        assert "help" in result
+    
+    def test_humanizer_handles_empty(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        assert h.process("") == ""
+        assert h.process(None) == ''  # type: ignore
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process('In the realm of sales.')
+        assert 'realm' not in result
+        assert 'area' in result
+
+    def test_humanizer_handles_empty(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        assert h.process("") == ""
+    
+    def test_humanizer_removes_realm(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.process("In the realm of sales.")
+        assert 'realm' not in result
+    
+    def test_humanizer_template_preserves_content(self):
+        from text_humanizer import TextHumanizer
+        h = TextHumanizer()
+        result = h.format_template("**Guarantee:** Strong guarantee works.")
+        assert "Strong guarantee" in result

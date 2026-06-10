@@ -12,6 +12,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot_core import BotPlugin, StructuredLogger, CFG
+from text_humanizer import TextHumanizer
 
 log = StructuredLogger("hormozi_plugin")
 
@@ -99,6 +100,7 @@ class HormoziPlugin(BotPlugin):
         super().__init__("hormozi")
         self.rag = RAGEngine()
         self.graph = GraphEngine()
+        self.humanizer = TextHumanizer()
         self._setup_handlers()
     
     def _setup_handlers(self):
@@ -168,7 +170,8 @@ Answer as Alex Hormozi — direct, specific numbers, no fluff. 2-3 paragraphs.""
                 if r.status_code == 200:
                     content = r.json()["choices"][0]["message"].get("content", "").strip()
                     if content:
-                        return re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+                        humanized = self.humanizer.process(content)
+                        return humanized
                 elif attempt < self.retries:
                     log.warn("api_retry", attempt=attempt+1, status=r.status_code)
                     continue
