@@ -2,30 +2,27 @@
 # sharp-tool — High-performance image processing via libvips/sharp
 set -euo pipefail
 
+SCRIPT="$(readlink -f "$0")"
+HELPER="$(dirname "$SCRIPT")/lib/sharp_helper.mjs"
+
 show_help() {
     echo "sharp — High-performance image processing (libvips)"
     echo ""
     echo "Usage: sharp-tool <command> [args...]"
     echo ""
     echo "Commands:"
-    echo "  resize <input> <output> <width> [height]   Resize image"
+    echo "  info <input>                                Get image metadata"
+    echo "  resize <input> <output> <width> [height]    Resize image"
     echo "  convert <input> <output>                    Convert format (jpg/png/webp/avif)"
-    echo "  info <input>                                Get image info"
     echo "  rotate <input> <output> [degrees]           Rotate image"
     echo "  blur <input> <output> [sigma]               Blur image"
-    echo "  pipeline <input> <output> [opts]            Full pipeline (resize+convert+quality)"
-    echo ""
-    echo "Options (for pipeline):"
-    echo "  --width W          Target width (default: keep original)"
-    echo "  --height H         Target height"
-    echo "  --quality Q        JPEG/WebP quality 1-100 (default: 85)"
-    echo "  --format F         Output format: jpeg, png, webp, avif"
+    echo "  pipeline <input> <output> [opts]            Full pipeline"
     echo ""
     echo "Examples:"
     echo "  sharp-tool info photo.jpg"
     echo "  sharp-tool convert photo.png photo.webp"
     echo "  sharp-tool resize photo.jpg thumb.jpg 200 200"
-    echo "  sharp-tool pipeline input.jpg output.webp --width 800 --quality 90"
+    echo "  sharp-tool blur photo.jpg blurred.jpg 5"
 }
 
 if [ $# -eq 0 ]; then
@@ -37,52 +34,23 @@ CMD="$1"
 shift
 
 case "$CMD" in
+    info)
+        node "$HELPER" info "$1"
+        ;;
     resize)
-        INPUT="$1"; OUTPUT="$2"; WIDTH="$3"; HEIGHT="${4:-}"
-        if [ -n "$HEIGHT" ]; then
-            sharp -i "$INPUT" -o "$OUTPUT" resize "$WIDTH" "$HEIGHT"
-        else
-            sharp -i "$INPUT" -o "$OUTPUT" resize "$WIDTH"
-        fi
-        echo "Resized: $INPUT -> $OUTPUT"
+        node "$HELPER" resize "$1" "$2" "${3:-}" "${4:-}"
         ;;
     convert)
-        INPUT="$1"; OUTPUT="$2"
-        sharp -i "$INPUT" -o "$OUTPUT"
-        echo "Converted: $INPUT -> $OUTPUT"
-        ;;
-    info)
-        sharp -i "$1" --stats 2>&1
+        node "$HELPER" convert "$1" "$2"
         ;;
     rotate)
-        INPUT="$1"; OUTPUT="$2"; DEGREES="${3:-90}"
-        sharp -i "$INPUT" -o "$OUTPUT" rotate "$DEGREES"
-        echo "Rotated: $INPUT -> $OUTPUT ($DEGREES°)"
+        node "$HELPER" rotate "$1" "$2" "${3:-90}"
         ;;
     blur)
-        INPUT="$1"; OUTPUT="$2"; SIGMA="${3:-3}"
-        sharp -i "$INPUT" -o "$OUTPUT" blur "$SIGMA"
-        echo "Blurred: $INPUT -> $OUTPUT (sigma=$SIGMA)"
+        node "$HELPER" blur "$1" "$2" "${3:-3}"
         ;;
     pipeline)
-        INPUT="$1"; OUTPUT="$2"; shift 2
-        WIDTH=""; HEIGHT=""; QUALITY="85"; FORMAT=""
-        while [ $# -gt 0 ]; do
-            case "$1" in
-                --width) WIDTH="$2"; shift 2 ;;
-                --height) HEIGHT="$2"; shift 2 ;;
-                --quality) QUALITY="$2"; shift 2 ;;
-                --format) FORMAT="$2"; shift 2 ;;
-                *) shift ;;
-            esac
-        done
-        CMD="sharp -i \"$INPUT\""
-        if [ -n "$WIDTH" ] || [ -n "$HEIGHT" ]; then
-            CMD="$CMD resize ${WIDTH:-} ${HEIGHT:-}"
-        fi
-        CMD="$CMD -o \"$OUTPUT\""
-        eval "$CMD"
-        echo "Pipeline complete: $INPUT -> $OUTPUT"
+        node "$HELPER" pipeline "$1" "$2" "${3:-}" "${4:-}" "${5:-85}"
         ;;
     help|--help|-h)
         show_help

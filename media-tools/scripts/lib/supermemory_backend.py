@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Supermemory backend — local memory store + API client"""
-import json, os, sys, glob
-from datetime import datetime
+import json, os, sys
+from datetime import datetime, timezone
 
 MEMORY_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".supermemory")
 os.makedirs(MEMORY_DIR, exist_ok=True)
@@ -18,7 +18,7 @@ def api_available():
     return None
 
 def store_memory(content):
-    entry = {"role": "user", "content": content, "timestamp": datetime.utcnow().isoformat()}
+    entry = {"role": "user", "content": content, "timestamp": datetime.now(timezone.utc).isoformat()}
     with open(MEM_FILE, "a") as f:
         f.write(json.dumps(entry) + "\n")
     return entry

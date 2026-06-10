@@ -24,3 +24,11 @@ bot_persistent/
 
 # OS
 .cache/
+
+# Node.js
+node_modules/
+media-tools/scripts/lib/node_modules/
+media-tools/scripts/lib/package-lock.json
+
+# Supermemory local memory store
+.supermemory/
