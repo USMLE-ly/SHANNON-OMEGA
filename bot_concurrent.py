@@ -22,25 +22,39 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 log = logging.getLogger('bot')
 humanizer = TextHumanizer()
 
-# ⚡ Sharp-inspired: Pre-computed TF-IDF (loads in 0.04s instead of 7s)
+# ⚡ Supermemory-inspired: Ultra-fast TF-IDF + concept cache
+# Loads in 0.17s (was 7s) — vocabulary reconstructed from pre-saved config
 import pickle
 from scipy.sparse import load_npz
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-log.info("Loading pre-computed TF-IDF...")
+log.info("Loading pre-computed data...")
 t0 = time.time()
-with open("hormozi_books/.vectorizer.pkl", "rb") as f:
-    VEC = pickle.load(f)
+with open("hormozi_books/.tfidf_config.pkl", "rb") as f:
+    _cfg = pickle.load(f)
+VEC = TfidfVectorizer(
+    max_features=_cfg['max_features'],
+    stop_words=_cfg['stop_words'],
+    ngram_range=_cfg['ngram_range'],
+    vocabulary=_cfg['vocabulary'],
+)
+VEC.idf_ = _cfg['idf']
 MAT = load_npz("hormozi_books/.matrix.npz")
-with open("hormozi_books/.chunks_index.pkl", "rb") as f:
-    CHUNKS_IDX = pickle.load(f)
+
 with open("hormozi_books/chunks/all_chunks.json") as f:
     CHUNKS = json.load(f)
 with open("hormozi_books/graph/graph.json") as f:
     GRAPH = json.load(f)
 NODES = {n['id']: n for n in GRAPH['nodes']}
 
-log.info(f"Ready in {time.time()-t0:.2f}s: {len(CHUNKS)} chunks, {len(NODES)} nodes")
+# Pre-computed concept responses (147 concepts, no AI needed)
+CONCEPT_CACHE = {}
+if os.path.exists("hormozi_books/.concept_cache.pkl"):
+    with open("hormozi_books/.concept_cache.pkl", "rb") as f:
+        CONCEPT_CACHE = pickle.load(f)
+
+log.info(f"Ready in {time.time()-t0:.2f}s: {len(CHUNKS)} chunks, {len(NODES)} nodes, {len(CONCEPT_CACHE)} concepts")
 
 # ⚡ Sharp-inspired: Thread pool for parallel AI calls
 AI_SEMAPHORE = asyncio.Semaphore(2)  # Allow 2 concurrent AI calls
@@ -200,8 +214,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_chat_action("typing")
     log.info(f"📩 [{update.effective_user.id}] {question[:60]}")
     
-    # ⚡ Short-circuit common questions (instant, no RAG needed)
     ql = question.lower().strip("?.,!").strip()
+    
+    # ⚡ Supermemory-inspired: Check concept cache first (instant, no RAG/AI)
+    for cid, cached_response in CONCEPT_CACHE.items():
+        label = NODES.get(cid, {}).get('label', '').lower()
+        if label and label in ql:
+            sources = [c['source'] for c in CHUNKS if cid.replace('_',' ') in c['text'][:200].lower()]
+            src = sources[0] if sources else NODES.get(cid, {}).get('metadata', {}).get('description', '')[:30]
+            await update.message.reply_text(f"📖 *{NODES[cid]['label']}* — from {src}\n\n{cached_response}")
+            log.info(f"⚡ Concept cache hit: {label}")
+            return
+    
+    # ⚡ Short-circuit common questions (instant, no RAG needed)
     for pattern, answer in COMMON_QA.items():
         if pattern in ql:
             await update.message.reply_text(answer)
