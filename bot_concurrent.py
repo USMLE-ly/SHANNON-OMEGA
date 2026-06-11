@@ -14,10 +14,15 @@ import os, sys, json, time, re, asyncio, logging
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
+import requests as _requests_lib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from text_humanizer import TextHumanizer, apply_conciseness, format_professional
 from professional_prompt import PROFESSIONAL_SYSTEM_PROMPT, optimize_context
+
+# HTTP session with connection pooling — cuts ~1-2s per call
+_API_SESSION = _requests_lib.Session()
+_API_SESSION.headers.update({"Content-Type": "application/json"})
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '8758115339:AAHH6gAIHmSo7Qf_VMc_HmBxz2Jy8w_1mtM')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -53,6 +58,11 @@ try:
         with open("hormozi_books/.concept_cache.pkl", "rb") as f:
             CONCEPT_CACHE = pickle.load(f)
     log.info(f"Ready in {time.time()-t0:.2f}s: {len(CHUNKS)} chunks, {len(NODES)} nodes, {len(CONCEPT_CACHE)} concepts")
+    # Pre-warm API connection on startup
+    try:
+        _API_SESSION.get("https://opencode.ai/zen/v1/models", timeout=3)
+    except:
+        pass
 except Exception as e:
     log.error(f"Load error: {e}")
     CHUNKS, GRAPH, NODES, CONCEPT_CACHE = [], {"nodes":[]}, {}, {}
@@ -61,7 +71,24 @@ except Exception as e:
 AI_SEMAPHORE = asyncio.Semaphore(2)
 AI_EXECUTOR = ThreadPoolExecutor(max_workers=3)
 RESPONSE_CACHE = OrderedDict()
-CACHE_MAX = 100
+CACHE_MAX = 200
+import hashlib as _hashlib
+_API_CACHE_DIR = ".api_cache"
+os.makedirs(_API_CACHE_DIR, exist_ok=True)
+
+def _disk_cache_get(key: str) -> Optional[dict]:
+    path = os.path.join(_API_CACHE_DIR, f"{key}.json")
+    if os.path.exists(path):
+        age = time.time() - os.path.getmtime(path)
+        if age < 3600:  # 1 hour TTL
+            with open(path) as f:
+                return json.load(f)
+    return None
+
+def _disk_cache_set(key: str, data: dict):
+    path = os.path.join(_API_CACHE_DIR, f"{key}.json")
+    with open(path, "w") as f:
+        json.dump(data, f)
 
 API_URL = "https://opencode.ai/zen/v1/chat/completions"
 
@@ -102,22 +129,29 @@ def _sync_query_ai(system_prompt: str, user_prompt: str,
             log.warning(f"Error attempt {attempt+1}: {e}")
     return None
 
-async def query_ai(prompt: str, system_prompt: str = None, timeout: int = 25) -> Optional[str]:
-    """Concurrent AI call via thread pool."""
-    cache_key = prompt[:100]
+async def query_ai(prompt: str, system_prompt: str = None, timeout: int = 15, max_out: int = 500) -> Optional[str]:
+    """Concurrent AI call via thread pool. Optimized for speed: 15s timeout, 500 token max."""
+    cache_key = prompt[:80]
+    cache_hash = _hashlib.md5(prompt.encode()).hexdigest()[:16]
     if cache_key in RESPONSE_CACHE:
         return RESPONSE_CACHE[cache_key]
+    # Check disk cache too
+    disk_hit = _disk_cache_get(cache_hash)
+    if disk_hit:
+        RESPONSE_CACHE[cache_key] = disk_hit
+        return disk_hit
     
     if system_prompt is None:
-        system_prompt = PROFESSIONAL_SYSTEM_PROMPT
+        system_prompt = "You are Alex Hormozi. Be very concise. 2-3 sentences max."
     
     async with AI_SEMAPHORE:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
-            AI_EXECUTOR, _sync_query_ai, system_prompt, prompt, 0.7, 1500, timeout
+            AI_EXECUTOR, _sync_query_ai, system_prompt, prompt, 0.5, max_out, timeout
         )
         if result:
             RESPONSE_CACHE[cache_key] = result
+            _disk_cache_set(cache_hash, result)
             if len(RESPONSE_CACHE) > CACHE_MAX:
                 RESPONSE_CACHE.popitem(last=False)
         return result
@@ -276,7 +310,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Level 4: AI enhancement (background, 25s timeout, non-blocking)
     if len(question) > 10 and not question.startswith("/fast"):
-        context_text = "\n\n".join([c['text'][:600] for c in chunks[:2]])
+        context_text = chunks[0]['text'][:400] if chunks else ""
         prompt = (
             f"Context from Hormozi's books:\n{context_text}\n\n"
             f"QUESTION: {question}\n\n"
