@@ -158,7 +158,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # المستوى 2: البحث في قاعدة المعرفة
         kb_context = ""
         if CHUNKS:
-            results = retrieve(question, VEC, MAT, CHUNKS, k=3)
+            results = retrieve(question, VEC, MAT, CHUNKS, k=5)
             if results:
                 kb_context = "\n\n".join([
                     f"[{r['source']} - ص{r['page']}]\n{r['text'][:500]}"
@@ -168,10 +168,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # المستوى 3: استدعاء API مع السياق إن وجد
         if kb_context:
-            prompt = f"من المصادر الإسلامية:\n{kb_context}\n\nسؤال المستخدم: {question}\n\nأجب بالعربية الفصحى. استشهد بالأدلة."
+            prompt = f"""المصادر المتاحة (أجب منها فقط ولا تستخدم معلومات من خارجها):
+{kb_context}
+
+سؤال المستخدم: {question}
+
+⚠️ تعليمات صارمة:
+1. أجب من المصادر أعلاه فقط — لا تستخدم أي معرفة خارجية من تدريبك
+2. اذكر اسم المصدر ورقم الصفحة لكل استشهاد
+3. إذا لم تجد الجواب في المصادر المقدمة، قل "لم أجد هذا في الكتب المرفوعة"
+4. أجب بالعربية الفصحى بأسلوب العلماء"""
         else:
-            prompt = question
-        
+            prompt = f"""سؤال المستخدم: {question}
+
+⚠️ تعليمات:
+1. أنت عالم ملم بكل الكتب الإسلامية في مكتبتك — أجب من علمك بها
+2. اذكر المصادر التي تستند إليها (اسم الكتاب، المؤلف)
+3. إذا سئلت عن أمر لا تعرفه، قل صراحة "هذا لم يرد في الكتب التي أملكها"
+4. أجب بالعربية الفصحى بأسلوب العلماء"""
+
         ai_response = await query_ai(prompt)
         
         if ai_response:
