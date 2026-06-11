@@ -8,10 +8,10 @@ from scipy.sparse import save_npz
 from collections import Counter
 
 PDFS = [
-    ("Part 1", "/tmp/codex-web-uploads/f-Bioi3Z/Kairanvi_Karanawi_Izhar_ul_haq_or_Truth_Revealed_Part_1_1864_1989.pdf"),
-    ("Part 2", "/tmp/codex-web-uploads/f-4AAcky/Kairanvi_Karanawi_Izhar_ul_haq_or_Truth_Revealed_Part_2_1864_1989.pdf"),
-    ("Part 3", "/tmp/codex-web-uploads/f-sAZw5E/Kairanvi_Karanawi_Izhar_ul_haq_or_Truth_Revealed_Part_3_1864_1989.pdf"),
-    ("Part 4", "/tmp/codex-web-uploads/f-ojrrPQ/Kairanvi_Karanawi_Izhar_ul_haq_or_Truth_Revealed_Part_4_1864_1989.pdf"),
+    ("Part 1", "/tmp/codex-web-uploads/f-Bioi3Z/Kairanvi_Kairanawi_Izhar_ul_haq_or_Truth_Revealed_Part_1_1864_1989.pdf"),
+    ("Part 2", "/tmp/codex-web-uploads/f-4AAcky/Kairanvi_Kairanawi_Izhar_ul_haq_or_Truth_Revealed_Part_2_1864_1989.pdf"),
+    ("Part 3", "/tmp/codex-web-uploads/f-sAZw5E/Kairanvi_Kairanawi_Izhar_ul_haq_or_Truth_Revealed_Part_3_1864_1989.pdf"),
+    ("Part 4", "/tmp/codex-web-uploads/f-ojrrPQ/Kairanvi_Kairanawi_Izhar_ul_haq_or_Truth_Revealed_Part_4_1864_1989.pdf"),
 ]
 
 CHECKPOINT_FILE = "izhar_checkpoint.json"
