@@ -79,7 +79,7 @@ def _sync_query_ai(system_prompt: str, user_prompt: str,
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                "reasoning_effort": "max",
+                
                 "temperature": temps[min(attempt, len(temps)-1)],
                 "max_tokens": max_tokens,
                 "top_p": 0.9,
@@ -281,7 +281,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Context from Hormozi's books:\n{context_text}\n\n"
             f"QUESTION: {question}\n\n"
             f"Answer as Alex Hormozi. Direct. Specific. Numbers. "
-            f"CRITICAL: Output visible text only — no reasoning, no internal monologue."
+            f"CRITICAL: Output visible text immediately. Write in markdown format with bullet points."
         )
         ai_response = await query_ai(prompt, timeout=25)
         if ai_response:
