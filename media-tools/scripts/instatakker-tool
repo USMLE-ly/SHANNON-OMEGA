@@ -4,6 +4,7 @@ set -euo pipefail
 
 PROJECT="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free"
 INSTADIR="$PROJECT/instatakker"
+XVFB_PID_FILE="/tmp/instatakker-xvfb.pid"
 
 show_help() {
     echo "InstaTakker — Instagram Engagement Workflow Manager"
@@ -11,14 +12,33 @@ show_help() {
     echo "Usage: instatakker-tool <command> [args...]"
     echo ""
     echo "Commands:"
-    echo "  start          Launch InstaTakker GUI (requires display)"
+    echo "  start          Launch InstaTakker GUI (auto-starts virtual display)"
     echo "  info           Show app info and version"
     echo "  status         Check if instatakker is installed"
     echo "  core <action>  Run headless automation (login|like|unfollow)"
+    echo "  screen         Take a screenshot of the app window"
     echo ""
     echo "Examples:"
+    echo "  instatakker-tool start    # Launches with Xvfb if no display"
     echo "  instatakker-tool info"
-    echo "  instatakker-tool start     # Opens Electron GUI"
+}
+
+ensure_display() {
+    if [ -z "${DISPLAY:-}" ]; then
+        echo "ℹ️  No display found, starting virtual display (Xvfb)..."
+        Xvfb :99 -screen 0 1280x720x24 &>/tmp/xvfb.log &
+        echo $! > "$XVFB_PID_FILE"
+        sleep 1
+        export DISPLAY=:99
+        echo "   Virtual display :99 ready"
+    fi
+}
+
+cleanup_display() {
+    if [ -f "$XVFB_PID_FILE" ]; then
+        kill "$(cat "$XVFB_PID_FILE")" 2>/dev/null || true
+        rm -f "$XVFB_PID_FILE"
+    fi
 }
 
 if [ $# -eq 0 ]; then
@@ -32,12 +52,16 @@ shift
 case "$CMD" in
     start)
         if [ ! -f "$INSTADIR/node_modules/electron/dist/electron" ]; then
-            echo "Electron not found. Run: cd $INSTADIR && npm install"
+            echo "❌ Electron not found. Run: cd $INSTADIR && npm install"
             exit 1
         fi
+        ensure_display
         cd "$INSTADIR"
         echo "🚀 Launching InstaTakker..."
-        npx electron .
+        echo "   (Close the app window or press Ctrl+C to stop)"
+        echo ""
+        npx electron . --no-sandbox --disable-gpu 2>&1
+        cleanup_display
         ;;
     info)
         cd "$INSTADIR"
@@ -63,12 +87,26 @@ case "$CMD" in
             echo "❌ InstaTakker not installed"
         fi
         ;;
+    screen)
+        ensure_display
+        if ! command -v import &>/dev/null; then
+            echo "📸 Installing imagemagick for screenshots..."
+            apt-get install -y -qq imagemagick 2>/dev/null
+        fi
+        if command -v import &>/dev/null; then
+            import -display :99 -window root /tmp/instatakker-screenshot.png 2>/dev/null && \
+                echo "📸 Screenshot saved: /tmp/instatakker-screenshot.png" || \
+                echo "⚠️  Screenshot failed (app may not be running)"
+        else
+            echo "⚠️  Screenshot tool not available"
+        fi
+        cleanup_display
+        ;;
     core)
         echo "ℹ️  Headless mode requires running instatakker-core.js directly:"
         echo "   node $INSTADIR/instatakker-core.js [action]"
         echo ""
-        echo "Note: This requires Instagram credentials and may need a display"
-        echo "for browser automation (Puppeteer/Playwright)."
+        echo "Note: This requires Instagram credentials and browser automation."
         ;;
     help|--help|-h)
         show_help
