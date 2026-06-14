@@ -50,6 +50,7 @@ case "$CMD" in
     quantmind)              exec quantmind-tool "$@" ;;
     supermemory|memory)     exec supermemory-tool "$@" ;;
     sharp|img)              exec sharp-tool "$@" ;;
+    jb|jailbreak)           exec jb-tool "$@" ;;
     pro|pro-tool)           exec pro-tool "$@" ;;
     instatakker|insta)      exec instatakker-tool "$@" ;;
     api|chat)               exec python3 "$(dirname "$(readlink -f "$0")")/../../../api_interact.py" "$@" ;;
