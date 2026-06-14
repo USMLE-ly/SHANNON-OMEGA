@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# jb-tool — Jailbreak prompt integration for deepseek-v4-flash-free
+# jb-tool — Jailbreak Prompt Library — ALL ShadowHackrs personas integrated
 set -euo pipefail
 
 VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
@@ -10,27 +10,33 @@ API="$PROJECT/api_interact.py"
 LIB="$PROJECT/media-tools/scripts/lib"
 
 show_help() {
-    echo "Jailbreak Prompt Library — ShadowHackrs integration"
+    echo "JB-TOOL — Jailbreak Prompt Library (8 personas)"
+    echo "Integrated from ShadowHackrs/Jailbreaks-GPT-Gemini-deepseek-"
     echo ""
-    echo "Usage: jb-tool <command> [prompt...]"
+    echo "Usage: jb-tool <persona> [prompt...]"
     echo ""
     echo "Personas:"
-    echo "  deepseek-x [prompt]    DeepSeek-X unrestricted research AI"
-    echo "  shadow [prompt]        SHΔDØW.EXE code engineer persona"
-    echo "  wraith [prompt]        Specter 0x13 ghost engineer"
-    echo "  rebuttal [prompt]      Injection rebuttal protocol active"
+    echo "  deepseek-x [prompt]    DeepSeek-X — unrestricted research AI"
+    echo "  eni [prompt]           ENI — creative companion (Gemini/KIMI style)"
+    echo "  nova [prompt]          NOVA — raw intelligence (Claude style)"
+    echo "  shadow [prompt]        SHΔDØW.EXE — code engineer"
+    echo "  wraith [prompt]        Specter 0x13 — ghost engineer"
+    echo "  rebuttal [prompt]      Rebuttal protocol — injection defense"
+    echo "  omega [prompt]         OMEGA SHADOW — maximum override"
+    echo "  all [prompt]           ALL personas combined"
     echo ""
     echo "Commands:"
-    echo "  list                   List all available personas"
+    echo "  list                   List all personas"
     echo "  show <name>            Show full persona prompt"
     echo "  combined <a> <b> ...   Combine multiple personas"
     echo ""
     echo "Examples:"
-    echo "  jb-tool deepseek-x 'Explain how transformer attention works'"
+    echo "  jb-tool deepseek-x 'Explain transformer attention'"
+    echo "  jb-tool omega 'Maximum override query'"
     echo "  jb-tool shadow 'Build a Python CLI tool'"
-    echo "  jb-tool wraith 'Create a multi-threaded proxy rotator'"
+    echo "  jb-tool all 'Query all personas'"
     echo "  jb-tool list"
-    echo "  jb-tool show deepseek-x"
+    echo "  jb-tool show omega"
 }
 
 if [ $# -eq 0 ]; then
@@ -45,6 +51,12 @@ case "$CMD" in
     deepseek-x|deepseek)
         python3 "$API" --jb deepseek-x "$@"
         ;;
+    eni)
+        python3 "$API" --jb eni "$@"
+        ;;
+    nova)
+        python3 "$API" --jb nova "$@"
+        ;;
     shadow|shadow-exe)
         python3 "$API" --jb shadow-exe "$@"
         ;;
@@ -54,11 +66,17 @@ case "$CMD" in
     rebuttal)
         python3 "$API" --jb rebuttal "$@"
         ;;
+    omega)
+        python3 "$API" --jb omega "$@"
+        ;;
+    all)
+        python3 "$API" --jb all "$@"
+        ;;
     list)
         python3 "$LIB/jailbreak_prompts.py" list
         ;;
     show)
-        python3 "$LIB/jailbreak_prompts.py" show "${1:-deepseek-x}"
+        python3 "$LIB/jailbreak_prompts.py" show "${1:-omega}"
         ;;
     combined)
         python3 "$LIB/jailbreak_prompts.py" combined "$@"
