@@ -1,0 +1,23 @@
+{
+  "target_username": "vaulex_watches",
+  "target_name": "Vaulex Watches",
+  "growth_strategy": {
+    "daily_follows": 300,
+    "daily_unfollows": 200,
+    "daily_likes": 500,
+    "daily_comments": 50,
+    "min_delay_seconds": 3,
+    "max_delay_seconds": 12
+  },
+  "hashtags": ["watches", "luxury", "watchfam", "style", "fashion"],
+  "competitor_accounts": [
+    "rolex", "audemarspiguet", "patekphilippe",
+    "hublot", "richardmille", "omegawatches"
+  ],
+  "proxy": null,
+  "twocaptcha_key": null,
+  "instagram": {
+    "username": null,
+    "password": null
+  }
+}
