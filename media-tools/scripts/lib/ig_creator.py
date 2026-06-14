@@ -14,9 +14,15 @@ GUERRILLA_API = 'https://api.guerrillamail.com/ajax.php'
 
 # reCAPTCHA solver
 RECAPTCHA_AVAILABLE = False
+V3_AVAILABLE = False
 try:
     from recaptcha_solver import solve_recaptcha
     RECAPTCHA_AVAILABLE = True
+except ImportError:
+    pass
+try:
+    from v3_solver import V3CaptchaSolver
+    V3_AVAILABLE = True
 except ImportError:
     pass
 
@@ -205,26 +211,75 @@ def create_account(email, password, fullname, username, headless=True):
                         random_delay(3, 5)
                         page.screenshot(path=str(PROJECT_ROOT / 'ig_04_captcha_solved.png'))
             
-            # Check for "Help us confirm it's you" (reCAPTCHA v3 / challenge page)
+            # Check for "Help us confirm it's you" (challenge page)
             body_text = page.evaluate("() => document.body.innerText")
             if 'confirm' in (body_text or '').lower() and 'security' in (body_text or '').lower():
-                print('[IG] Challenge page detected (reCAPTCHA v3)')
+                print('[IG] Challenge page detected')
                 page.screenshot(path=str(PROJECT_ROOT / 'ig_04_challenge.png'))
                 
-                # Wait for the Next button to become enabled (reCAPTCHA assessment)
-                print('[IG] Waiting for reCAPTCHA assessment...')
+                # Give reCAPTCHA time to load
+                random_delay(3, 5)
+                
+                # Initialize
+                captcha_solved = False
+                captcha_iframe_count = 0
+                
+                # Try method 1: reCAPTCHA v2 audio solver (if iframe appears)
+                if RECAPTCHA_AVAILABLE:
+                    captcha_iframe = page.locator('iframe[title="reCAPTCHA"], iframe[src*="recaptcha"]')
+                    captcha_iframe_count = captcha_iframe.count()
+                    if captcha_iframe_count > 0:
+                        print('[IG] reCAPTCHA iframe detected, trying audio solver...')
+                        from recaptcha_solver import solve_recaptcha
+                        captcha_solved = solve_recaptcha(page)
+                        if captcha_solved:
+                            print('[IG] ✓ reCAPTCHA solved via audio!')
+                            random_delay(2, 3)
+                
+                # Try method 2: Direct API token generation + injection
+                if captcha_iframe_count == 0 or not captcha_solved:
+                    print('[IG] Trying direct API token generation...')
+                    try:
+                        from v3_solver import V3CaptchaSolver
+                        solver = V3CaptchaSolver(verbose=True)
+                        
+                        # Extract sitekey from the page
+                        sitekey = solver.extract_sitekey_from_page(page)
+                        if sitekey:
+                            print(f'[IG] Sitekey: {sitekey}')
+                            # Get token
+                            page_url = page.url
+                            token = solver.solve_token(
+                                sitekey=sitekey,
+                                page_url=page_url,
+                                page_action='signup',
+                            )
+                            if token:
+                                print(f'[IG] Token obtained ({len(token)} chars)')
+                                # Inject into page
+                                solver.inject_token(page, token)
+                                random_delay(2, 3)
+                                print('[IG] Token injected')
+                            else:
+                                print('[IG] Token generation failed')
+                        else:
+                            print('[IG] Could not find sitekey')
+                    except ImportError:
+                        print('[IG] v3_solver not available')
+                    except Exception as e:
+                        print(f'[IG] Token gen error: {e}')
+                
+                # Now wait for Next button to become enabled
+                print('[IG] Waiting for Next button...')
                 next_btn = page.locator('div[role="button"]:has-text("Next")').first
                 if next_btn.count() > 0:
                     try:
-                        # Wait up to 30s for the button to become enabled
-                        next_btn.wait_for(state='attached', timeout=30000)
-                        # Check every second if it becomes enabled (not disabled)
                         for i in range(30):
                             is_disabled = next_btn.get_attribute('aria-disabled')
                             if is_disabled != 'true':
                                 next_btn.scroll_into_view_if_needed()
                                 random_delay()
-                                next_btn.click()
+                                next_btn.click(force=True)
                                 print(f'[IG] Next clicked after {i+1}s')
                                 random_delay(5, 8)
                                 page.screenshot(path=str(PROJECT_ROOT / 'ig_05_after_next.png'))
@@ -232,16 +287,15 @@ def create_account(email, password, fullname, username, headless=True):
                                 break
                             random_delay(1)
                         else:
-                            print('[IG] Next button remained disabled (low reCAPTCHA score)')
-                            # Try force click anyway
+                            print('[IG] Next never enabled, force-clicking...')
                             try:
-                                next_btn.click(force=True, timeout=5000)
+                                next_btn.click(force=True, timeout=3000)
                                 print('[IG] Force-clicked Next')
                                 random_delay(5, 8)
                             except:
                                 print('[IG] Could not click Next')
                     except Exception as e:
-                        print(f'[IG] Wait error: {e}')
+                        print(f'[IG] Error with Next: {e}')
             
             # Check for phone verification 
             if 'phone' in (body_text or '').lower() and ('number' in (body_text or '').lower() or 'verify' in (body_text or '').lower()):

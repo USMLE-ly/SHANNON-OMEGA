@@ -1,26 +1,49 @@
-# reCAPTCHA Bypass Research
+# reCAPTCHA Bypass Research — SHANNON-Ω
 
-## Repos cloned and analyzed
+## reCAPTCHA v3 Enterprise — Instagram Signup
 
-| Repo | Approach | Status |
+### Found Sitekey
+```
+6LdktRgnAAAAAFQ6icovYI2-masYLFjEFyzQzpix
+```
+Instagram uses Facebook's domain (`fbsbx.com:443`) for reCAPTCHA.
+
+### Methods Tested
+
+| Method | Status | Notes |
 |---|---|---|
-| [GoogleRecaptchaBypass](https://github.com/sarperavci/GoogleRecaptchaBypass) | Audio challenge via DrissionPage + Google Speech | v2 only |
-| [uncaptcha2](https://github.com/ecthros/uncaptcha2) | Audio via pyautogui + speech_recognition | v2 only, brittle |
-| [lolrecaptcha](https://github.com/geohot/lolrecaptcha) | Audio via Go + speech-to-text | v2 only |
-| [recaptcha-phish](https://github.com/JohnHammond/recaptcha-phish) | Phish token from real user | Social eng, not automated |
-| [recaptcha-cracker](https://github.com/nocturnaltortoise/recaptcha-cracker) | ML + semantic similarity | Research project |
-| [recaptcha-v3](https://github.com/abinnovision/recaptcha-v3) | TypeScript library for implementing v3 | Not for bypassing |
+| Audio solver (v2 iframe) | 🔄 Works if v2 challenge appears | v2 iframe sometimes loads |
+| Direct API (x404xx approach) | ❌ Blocked by Google | IP needs better reputation |
+| 2Captcha API (paid) | ✅ Works reliably | ~$1/1000 solves, set `TWOCAPTCHA_KEY` |
+| Capsolver API (paid) | ✅ Alternative | https://capsolver.com |
 
-## The Instagram Problem
+### How to Use 2Captcha
+```bash
+export TWOCAPTCHA_KEY="your_2captcha_api_key"
+python3 media-tools/scripts/lib/ig_creator.py full "Name" "username"
+# Or via v3_solver:
+python3 -c "
+from v3_solver import V3CaptchaSolver
+solver = V3CaptchaSolver(twocaptcha_key='YOUR_KEY', verbose=True)
+token = solver.solve_token('6LdktRgnAAAAAFQ6icovYI2-masYLFjEFyzQzpix',
+    'https://www.instagram.com/accounts/emailsignup/?next=',
+    page_action='signup', use_twocaptcha=True)
+print(f'Token: {token}')
+"
+```
 
-Instagram uses **reCAPTCHA v3 Enterprise** (invisible, score-based). There is no iframe/challenge to interact with. Bypass requires:
+### Repos Analyzed
+- **x404xx/Recaptcha-V3** — Direct API solver (free, IP-dependent)
+- **sarperavci/GoogleRecaptchaBypass** — v2 audio via DrissionPage
+- **ecthros/uncaptcha2** — v2 audio via pyautogui
+- **geohot/lolrecaptcha** — v2 audio via Go
+- **2captcha/2captcha-python** — Official 2Captcha Python lib
+- **recaptchaUser/ReCaptcha-V3-Solver** — Capsolver wrapper
 
-1. **Residential proxies** — clean IP reputation
-2. **Stealth browser fingerprint** — Playwright + manual patches (implemented)
-3. **CAPTCHA solving API** — 2Captcha, Capsolver ($1-2/1k solves)
-4. **Manual phone verification** — via SMS services
-
-## What We Implemented
-
-- `media-tools/scripts/lib/recaptcha_solver.py` — Playwright-based reCAPTCHA v2 audio solver
-- `media-tools/scripts/lib/ig_creator.py` — Full Instagram signup with stealth + challenge handling
+### Architecture
+```
+IG Creator → Submit Form → Challenge Page → Audio Solver (v2 iframe)
+                                           → Direct API (free)
+                                           → 2Captcha (paid, reliable)
+                                           → Next button → Verify Email → Done
+```
