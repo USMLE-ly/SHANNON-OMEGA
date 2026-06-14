@@ -1,0 +1,1 @@
+if(typeof window['captchafoxOnVerify']==='function'){const token=document['querySelector']('.twcpt-captchafox-helper\x20input')['value'];window['captchafoxOnVerify'](token);}

@@ -236,8 +236,20 @@ def create_account(email, password, fullname, username, headless=True):
                             print('[IG] ✓ reCAPTCHA solved via audio!')
                             random_delay(2, 3)
                 
-                # Try method 2: Direct API token generation + injection
+                # Try method 2: 2Captcha extension or direct API
                 if captcha_iframe_count == 0 or not captcha_solved:
+                    if hasattr(self, 'twocaptcha_key') and self.twocaptcha_key:
+                        print('[IG] 2Captcha key set — extension will auto-solve')
+                        # Wait up to 60s for extension to solve
+                        for w in range(60):
+                            body = page.evaluate("() => document.body.innerText")
+                            if 'confirm' not in (body or '').lower():
+                                print(f'[IG] Challenge resolved at second {w+1}!')
+                                page.screenshot(path=str(PROJECT_ROOT / 'ig_05_solved.png'))
+                                break
+                            page.wait_for_timeout(1000)
+                        else:
+                            print('[IG] Extension did not auto-solve, trying direct API...')
                     print('[IG] Trying direct API token generation...')
                     try:
                         from v3_solver import V3CaptchaSolver
