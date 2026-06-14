@@ -12,6 +12,14 @@ LAST_EMAIL = PROJECT_ROOT / '.last_email.json'
 CREDENTIALS = PROJECT_ROOT / '.ig_credentials.json'
 GUERRILLA_API = 'https://api.guerrillamail.com/ajax.php'
 
+# reCAPTCHA solver
+RECAPTCHA_AVAILABLE = False
+try:
+    from recaptcha_solver import solve_recaptcha
+    RECAPTCHA_AVAILABLE = True
+except ImportError:
+    pass
+
 def random_delay(min_s=0.5, max_s=2.0):
     time.sleep(random.uniform(min_s, max_s))
 
@@ -64,9 +72,31 @@ def create_account(email, password, fullname, username, headless=True):
         )
         context = browser.new_context(
             viewport={'width': 1366, 'height': 900},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            locale='en-US',
+            timezone_id='America/New_York',
+            permissions=['geolocation'],
+            geolocation={'latitude': 40.7128, 'longitude': -74.0060},
         )
         page = context.new_page()
+        
+        # Apply stealth patches to bypass bot detection
+        # This patches key browser fingerprint vectors that anti-bot systems check
+        try:
+            stealth_js = '''
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'plugins', { 
+                get: () => [1, 2, 3, 4, 5] 
+            });
+            Object.defineProperty(navigator, 'languages', { 
+                get: () => ['en-US', 'en'] 
+            });
+            window.chrome = { runtime: {} };
+            '''
+            page.add_init_script(stealth_js)
+            print('[IG] Stealth patches applied')
+        except Exception as e:
+            print(f'[IG] Stealth patch warning: {e}')
         
         try:
             # Step 1: Go to signup
@@ -160,6 +190,63 @@ def create_account(email, password, fullname, username, headless=True):
             random_delay(5, 8)
             page.screenshot(path=str(PROJECT_ROOT / 'ig_02_after_submit.png'))
             print(f'[IG] URL: {page.url}')
+            
+            # Step 6: Handle post-submit challenges
+            # Instagram may show: reCAPTCHA v2, phone verification, or success
+            
+            # Check for reCAPTCHA iframe (v2)
+            if RECAPTCHA_AVAILABLE:
+                captcha_iframe = page.locator('iframe[title="reCAPTCHA"], iframe[src*="recaptcha"]')
+                if captcha_iframe.count() > 0:
+                    print('[IG] reCAPTCHA v2 detected, attempting to solve...')
+                    solved = solve_recaptcha(page)
+                    if solved:
+                        print('[IG] ✓ reCAPTCHA solved!')
+                        random_delay(3, 5)
+                        page.screenshot(path=str(PROJECT_ROOT / 'ig_04_captcha_solved.png'))
+            
+            # Check for "Help us confirm it's you" (reCAPTCHA v3 / challenge page)
+            body_text = page.evaluate("() => document.body.innerText")
+            if 'confirm' in (body_text or '').lower() and 'security' in (body_text or '').lower():
+                print('[IG] Challenge page detected (reCAPTCHA v3)')
+                page.screenshot(path=str(PROJECT_ROOT / 'ig_04_challenge.png'))
+                
+                # Wait for the Next button to become enabled (reCAPTCHA assessment)
+                print('[IG] Waiting for reCAPTCHA assessment...')
+                next_btn = page.locator('div[role="button"]:has-text("Next")').first
+                if next_btn.count() > 0:
+                    try:
+                        # Wait up to 30s for the button to become enabled
+                        next_btn.wait_for(state='attached', timeout=30000)
+                        # Check every second if it becomes enabled (not disabled)
+                        for i in range(30):
+                            is_disabled = next_btn.get_attribute('aria-disabled')
+                            if is_disabled != 'true':
+                                next_btn.scroll_into_view_if_needed()
+                                random_delay()
+                                next_btn.click()
+                                print(f'[IG] Next clicked after {i+1}s')
+                                random_delay(5, 8)
+                                page.screenshot(path=str(PROJECT_ROOT / 'ig_05_after_next.png'))
+                                print(f'[IG] URL after next: {page.url}')
+                                break
+                            random_delay(1)
+                        else:
+                            print('[IG] Next button remained disabled (low reCAPTCHA score)')
+                            # Try force click anyway
+                            try:
+                                next_btn.click(force=True, timeout=5000)
+                                print('[IG] Force-clicked Next')
+                                random_delay(5, 8)
+                            except:
+                                print('[IG] Could not click Next')
+                    except Exception as e:
+                        print(f'[IG] Wait error: {e}')
+            
+            # Check for phone verification 
+            if 'phone' in (body_text or '').lower() and ('number' in (body_text or '').lower() or 'verify' in (body_text or '').lower()):
+                print('[IG] Phone verification requested')
+                page.screenshot(path=str(PROJECT_ROOT / 'ig_06_phone_verify.png'))
             
             return browser, page, True
             
