@@ -19,13 +19,14 @@ show_help() {
     echo "  sharp resize/convert/info/rotate    High-performance image processing"
     echo "  pro ask|coder|research|analyst      Professional mode (deepseek PRO)"
     echo "  instatakker start|info|status       Instagram engagement workflow"
+    echo "  ig email|signup|full|verify         Instagram account creator + verifier"
     echo "  bot login|follow|like|view           ZORG-Ω InstaBot automation engine"
     echo "  email generate|inbox|wait            Temporary email generator (Guerrilla Mail)"
     echo ""
     echo "Aliases:"
     echo "  convert  → markitdown     vec  → turbovec      pdf  → pdf-extract"
     echo "  memory   → supermemory    img  → sharp"
-    echo "  pro      → pro-tool       insta → instatakker      bot  → bot-tool      email → email-tool"
+    echo "  pro      → pro-tool       insta → instatakker      bot  → bot-tool      email → email-tool      ig   → ig-tool"
     echo ""
     echo "Other:"
     echo "  api|chat <prompt>                   Query deepseek-v4-flash-free via OpenCode Zen"
@@ -55,6 +56,7 @@ case "$CMD" in
     jb|jailbreak)           exec jb-tool "$@" ;;
     pro|pro-tool)           exec pro-tool "$@" ;;
     instatakker|insta)      exec instatakker-tool "$@" ;;
+    ig|ig-tool)            exec ig-tool "$@" ;;
     bot|instabot)          exec bot-tool "$@" ;;
     email|email-tool)        exec email-tool "$@" ;;
     api|chat)               exec python3 "$(dirname "$(readlink -f "$0")")/../../../api_interact.py" "$@" ;;

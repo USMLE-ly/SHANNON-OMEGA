@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# ig-tool — Instagram account creation + bot manager
+set -euo pipefail
+
+PROJECT="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free"
+ENGINE="$PROJECT/media-tools/scripts/lib/igcreator.mjs"
+
+show_help() {
+    echo "IG Tool — Instagram Account Manager (ZORG-Ω)"
+    echo ""
+    echo "Usage: ig-tool <command> [args...]"
+    echo ""
+    echo "Commands:"
+    echo "  email                          Generate temp email"
+    echo "  signup [name] [user]           Sign up (opens browser via Xvfb)"
+    echo "  full [name] [user]             Full auto pipeline"
+    echo "  verify [sid]                   Wait for verification code"
+    echo "  bot login <user> <pass>        Login via bot"
+    echo "  bot follow <user> <pass> [t]   Follow targets via bot"
+    echo "  bot like <user> <pass> [t]     Like posts via bot"
+    echo ""
+    echo "Examples:"
+    echo "  ig-tool email"
+    echo "  ig-tool signup 'Vaulex Watches' vaulex_official"
+    echo "  ig-tool verify"
+    echo "  ig-tool bot login myuser mypass"
+}
+
+if [ $# -eq 0 ]; then
+    show_help
+    exit 0
+fi
+
+CMD="$1"
+shift
+
+case "$CMD" in
+    email)
+        node "$ENGINE" email
+        ;;
+    signup)
+        xvfb-run -a node "$ENGINE" signup "$@"
+        ;;
+    full)
+        xvfb-run -a node "$ENGINE" full "$@"
+        ;;
+    verify)
+        node "$ENGINE" verify "$@"
+        ;;
+    bot)
+        exec bot-tool "$@"
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        echo "Unknown: $CMD"
+        show_help
+        exit 1
+        ;;
+esac
