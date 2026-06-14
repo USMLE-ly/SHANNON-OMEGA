@@ -20,11 +20,12 @@ show_help() {
     echo "  pro ask|coder|research|analyst      Professional mode (deepseek PRO)"
     echo "  instatakker start|info|status       Instagram engagement workflow"
     echo "  bot login|follow|like|view           ZORG-Ω InstaBot automation engine"
+    echo "  email generate|inbox|wait            Temporary email generator (Guerrilla Mail)"
     echo ""
     echo "Aliases:"
     echo "  convert  → markitdown     vec  → turbovec      pdf  → pdf-extract"
     echo "  memory   → supermemory    img  → sharp"
-    echo "  pro      → pro-tool       insta → instatakker      bot  → bot-tool"
+    echo "  pro      → pro-tool       insta → instatakker      bot  → bot-tool      email → email-tool"
     echo ""
     echo "Other:"
     echo "  api|chat <prompt>                   Query deepseek-v4-flash-free via OpenCode Zen"
@@ -55,6 +56,7 @@ case "$CMD" in
     pro|pro-tool)           exec pro-tool "$@" ;;
     instatakker|insta)      exec instatakker-tool "$@" ;;
     bot|instabot)          exec bot-tool "$@" ;;
+    email|email-tool)        exec email-tool "$@" ;;
     api|chat)               exec python3 "$(dirname "$(readlink -f "$0")")/../../../api_interact.py" "$@" ;;
     help|--help|-h)         show_help ;;
     *)                      echo "Unknown command: $CMD"; show_help; exit 1 ;;
