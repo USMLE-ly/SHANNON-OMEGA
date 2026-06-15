@@ -56,6 +56,30 @@ case "${1:-help}" in
             [ -d "$d" ] && echo "    ✓ $(basename $d)" || echo "    ✗ $(basename $d)"
         done
         ;;
+    tampermonkey)
+        echo -e "${YELLOW}► Tampermonkey Browser Script${NC}"
+        SCRIPT="$OMEGA/scripts/instagram_auto_liker.user.js"
+        if [ -f "$SCRIPT" ]; then
+            echo ""
+            echo "  Script ready at:"
+            echo "    $SCRIPT"
+            echo ""
+            echo -e "${GREEN}Installation:${NC}"
+            echo "  1. Install Tampermonkey:  https://www.tampermonkey.net/"
+            echo "  2. Install Cookie-Editor: https://cookie-editor.com/"
+            echo "  3. Open file in browser:"
+            echo "     file://$SCRIPT"
+            echo ""
+            echo -e "${GREEN}Usage:${NC}"
+            echo "  1. Log into instagram.com"
+            echo "  2. Click ❤ Like or ➕ Follow in bottom-right panel"
+            echo "  3. 🍪 Export Cookies for bot session reuse"
+            echo ""
+            echo -e "${GREEN}Shortcut:${NC} Ctrl+F12 to show panel"
+        else
+            echo -e "${RED}Script not found${NC}"
+        fi
+        ;;
     help|*)
         echo "Omega Orchestrator"
         echo ""
