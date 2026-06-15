@@ -54,6 +54,7 @@ case "$CMD" in
     supermemory|memory)     exec supermemory-tool "$@" ;;
     sharp|img)              exec sharp-tool "$@" ;;
     jb|jailbreak)           exec jb-tool "$@" ;;
+    omega)              exec omega "$@" ;;
     pro|pro-tool)           exec pro-tool "$@" ;;
     instatakker|insta)      exec instatakker-tool "$@" ;;
     ig|ig-tool)            exec ig-tool "$@" ;;
