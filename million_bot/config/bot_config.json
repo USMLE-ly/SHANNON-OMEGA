@@ -21,15 +21,28 @@
     "avoid_hashtags_on_follow": true,
     "randomize_actions": true
   },
-  "hashtags": ["watches", "luxury", "watchfam", "style", "fashion", "timepiece"],
+  "hashtags": [
+    "watches",
+    "luxury",
+    "watchfam",
+    "style",
+    "fashion",
+    "timepiece"
+  ],
   "competitor_accounts": [
-    "rolex", "audemarspiguet", "patekphilippe",
-    "hublot", "richardmille", "omegawatches",
-    "tagheuer", "iwc", "panerai"
+    "rolex",
+    "audemarspiguet",
+    "patekphilippe",
+    "hublot",
+    "richardmille",
+    "omegawatches",
+    "tagheuer",
+    "iwc",
+    "panerai"
   ],
   "proxy": null,
   "instagram": {
-    "username": null,
-    "password": null
+    "username": "vexo710",
+    "password": "Hesoyam2001"
   }
 }

@@ -22,3 +22,25 @@ node_modules/
 # System
 .DS_Store
 Thumbs.db
+
+# Instagram state files (credentials, sessions)
+.ig_*.json
+ig_*.json
+.last_email.json
+omega/challenge_state.json
+omega/omega_status.json
+omega/login_*.png
+omega/challenge_*.png
+omega/*.log
+omega/logs/
+omega/session_cookies.json
+*.srt
+*.pdf
+*.docx
+omega/omega_config.json
+
+# Debug screenshots
+omega/*.png
+omega/*.jpg
+!omega/scripts/
+last_challenge.json

@@ -33,7 +33,6 @@ def save_config(cfg):
 
 def random_delay(min_s=1.0, max_s=3.0):
     """Human-like random delay with InstaTakker anti-ban patterns"""
-    # 8% chance of extended pause (human-like behavior)
     if random.random() < 0.08:
         time.sleep(random.uniform(5.0, 12.0))
     else:
@@ -60,13 +59,21 @@ class IGrowthBot:
     def __init__(self, config):
         self.config = config
         self.stats = {'followed': 0, 'unfollowed': 0, 'liked': 0, 'commented': 0}
+        self.browser = None
+        self.page = None
+        self.context = None
     
     def login(self, username, password):
-        """Login to Instagram via Playwright."""
+        """Login to Instagram - tries web first, then API fallback."""
         from playwright.sync_api import sync_playwright
         
         log.info(f'Logging in as @{username}...')
         
+        # Try API login first (no browser needed)
+        if self._login_api(username, password):
+            return True
+        
+        # Fall back to web login
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
@@ -74,59 +81,166 @@ class IGrowthBot:
             )
             context = browser.new_context(
                 viewport={'width': 1366, 'height': 900},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
             )
             page = context.new_page()
             
             # Stealth patches
             page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
             window.chrome = { runtime: {} };
             """)
             
-            page.goto('https://www.instagram.com/accounts/login/', wait_until='networkidle', timeout=30000)
-            page.wait_for_selector('input[name="username"]', timeout=15000)
-            random_delay(2, 4)
+            if self._login_web(page, context, browser, username, password):
+                self.browser = browser
+                self.page = page
+                self.context = context
+                return True
             
-            # Fill login
-            page.locator('input[name="username"]').fill(username)
-            random_delay(1, 2)
-            page.locator('input[name="password"]').fill(password)
-            random_delay(1, 2)
-            page.locator('button[type="submit"]').click()
+            browser.close()
+            return False
+    
+    def _login_api(self, username, password):
+        """Login via Instagram private API (bypasses web/reCAPTCHA entirely)."""
+        try:
+            from instagrapi import Client
+            cl = Client()
+            cl.delay_range = [3, 6]
             
-            # Wait for login to complete
-            random_delay(5, 8)
-            page.wait_for_selector('[aria-label="Home"], [aria-label="Instagram"]', timeout=30000)
-            log.info('✓ Login successful!')
+            session_path = PROJECT_ROOT / '.ig_api_session.json'
+            if session_path.exists():
+                try:
+                    cl.load_settings(str(session_path))
+                    cl.login(username, password)
+                    log.info('✓ API login successful (loaded session)!')
+                    return True
+                except Exception as e:
+                    log.warning(f'Session expired: {e}')
             
-            # Check for "Save Info" dialog
-            try:
-                not_now = page.locator('button:has-text("Not Now")').first
-                if not_now.is_visible(timeout=5000):
-                    not_now.click()
-                    random_delay(2, 3)
-            except: pass
+            cl.login(username, password)
+            cl.dump_settings(str(session_path))
+            log.info('✓ API login successful (fresh)!')
             
-            # Check for notification dialog
-            try:
-                not_now2 = page.locator('button:has-text("Not Now")').first
-                if not_now2.is_visible(timeout=3000):
-                    not_now2.click()
-            except: pass
-            
-            self.browser = browser
-            self.page = page
-            self.context = context
-            log.info('Bot ready!')
+            # Store client for later use
+            self._api_client = cl
             return True
+            
+        except ImportError:
+            log.warning('instagrapi not available - install: pip install instagrapi')
+            return False
+        except Exception as e:
+            err = str(e).lower()
+            if 'challenge' in err or 'checkpoint' in err or 'bloks' in err:
+                log.warning('Account needs manual verification via Instagram app/website')
+                log.warning('➡ Open Instagram on phone, check notifications, verify login')
+            elif 'password' in err:
+                log.warning('Wrong password for @%s', username)
+            else:
+                log.warning(f'API login failed: {e}')
+            return False
+    
+    def _login_web(self, page, context, browser, username, password):
+        """Web login via Instagram's login form."""
+        log.info('Attempting web login...')
+        
+        try:
+            page.goto('https://www.instagram.com/accounts/login/', wait_until='networkidle', timeout=30000)
+        except:
+            pass
+        
+        # Wait for page to stabilize
+        time.sleep(3)
+        
+        # Check if already logged in
+        if 'login' not in page.url.lower():
+            log.info('✓ Already logged in!')
+            return True
+        
+        # Find input fields - Instagram uses 'email' and 'pass' as names
+        try:
+            page.wait_for_selector('input[name="email"]', timeout=10000)
+        except:
+            log.warning('Login form not found')
+            page.screenshot(path=str(PROJECT_ROOT / 'ig_login_page.png'))
+            return False
+        
+        random_delay(2, 4)
+        page.locator('input[name="email"]').fill(username)
+        random_delay(1, 2)
+        page.locator('input[name="pass"]').fill(password)
+        random_delay(1, 2)
+        
+        page.screenshot(path=str(PROJECT_ROOT / 'ig_login_filled.png'))
+        
+        # Click login using multiple strategies
+        clicked = False
+        strategies = [
+            # 1: Click the "Log in" div directly
+            lambda: page.locator('div:has-text("Log in")').first.click(),
+            # 2: Use JS to click
+            lambda: page.evaluate("document.querySelector('div:has-text(\"Log in\")')?.click()"),
+            # 3: Submit the form via JS
+            lambda: page.evaluate("document.getElementById('login_form')?.requestSubmit()"),
+            # 4: Click submit button
+            lambda: page.locator('button[type="submit"]').first.click(timeout=3000),
+            # 5: Dispatch mouse events
+            lambda: page.evaluate("""
+                const d = [...document.querySelectorAll('div')].find(d => d.innerText === 'Log in');
+                if(d) { d.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+                d.dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
+                d.dispatchEvent(new MouseEvent('click', {bubbles:true})); }
+            """),
+        ]
+        
+        for strategy in strategies:
+            try:
+                strategy()
+                clicked = True
+                break
+            except Exception:
+                continue
+        
+        if not clicked:
+            log.error('Could not click login button')
+            return False
+        
+        # Wait for login result
+        random_delay(5, 8)
+        
+        current_url = page.url.lower()
+        page.screenshot(path=str(PROJECT_ROOT / 'ig_login_result.png'))
+        
+        if '/challenge/' in current_url:
+            log.warning('⚠ Challenge page - Instagram needs human verification')
+            log.warning('Open instagram.com on your phone to approve this login')
+            page.screenshot(path=str(PROJECT_ROOT / 'ig_challenge.png'))
+            return False
+        elif 'login' not in current_url or 'onetap' in current_url:
+            log.info('✓ Web login successful!')
+            
+            # Handle dialogs
+            for text in ['Save Info', 'Not Now', 'Turn On']:
+                try:
+                    btn = page.locator(f'button:has-text("{text}")').first
+                    if btn.is_visible(timeout=3000):
+                        btn.click()
+                        random_delay(1, 2)
+                except:
+                    pass
+            
+            return True
+        
+        log.warning(f'Login incomplete - URL: {page.url}')
+        return False
     
     def navigate_to_profile(self, username):
         """Navigate to a user's profile."""
         log.info(f'Navigating to @{username}...')
         self.page.goto(f'https://www.instagram.com/{username}/', wait_until='networkidle', timeout=30000)
         random_delay(2, 4)
-        return self.page.locator('h2').count() > 0
+        return True
     
     def follow_user(self):
         """Follow the current profile."""
@@ -134,151 +248,139 @@ class IGrowthBot:
             follow_btn = self.page.locator('button:has-text("Follow")').first
             if follow_btn.is_visible(timeout=5000):
                 follow_btn.click()
-                random_delay(3, 6)
+                random_delay(2, 4)
                 self.stats['followed'] += 1
-                log.info(f'  Followed! (total: {self.stats["followed"]})')
+                log.info('✓ Followed!')
                 return True
-            return False
+            else:
+                log.info('Already following or button not found')
+                return False
         except Exception as e:
-            log.error(f'  Follow error: {e}')
+            log.warning(f'Follow error: {e}')
             return False
     
-    def like_recent_posts(self, count=10):
-        """Like recent posts from the current profile."""
+    def like_recent_posts(self, count=5):
+        """Like recent posts on the current page/profile."""
         liked = 0
         try:
-            # Scroll to load posts
-            self.page.evaluate('window.scrollTo(0, 500)')
-            random_delay(1, 2)
+            like_buttons = self.page.locator('span[aria-label="Like"], svg[aria-label="Like"]').all()
+            log.info(f'Found {len(like_buttons)} like buttons')
             
-            for i in range(count):
+            for btn in like_buttons[:count]:
                 try:
-                    # Find post links
-                    posts = self.page.locator('a[href*="/p/"]').all()
-                    if i >= len(posts):
-                        log.info('  No more posts to like')
+                    if btn.is_visible(timeout=3000):
+                        btn.click()
+                        self.stats['liked'] += 1
+                        liked += 1
+                        random_delay(3, 6)
+                        log.info(f'  Liked #{liked}')
+                except:
+                    continue
+        except Exception as e:
+            log.warning(f'Like error: {e}')
+        
+        return liked
+    
+    def follow_followers_of(self, target_username, max_follows=30):
+        """Follow followers of a target account."""
+        log.info(f'Following followers of @{target_username}...')
+        
+        try:
+            self.navigate_to_profile(target_username)
+            random_delay(2, 4)
+            
+            followers_link = self.page.locator('a[href$="/followers/"]').first
+            if followers_link.is_visible(timeout=5000):
+                followers_link.click()
+                random_delay(3, 5)
+                
+                # Scroll follower list
+                followed_count = 0
+                for i in range(50):
+                    if followed_count >= max_follows:
                         break
                     
-                    # Click post
-                    posts[i].click()
-                    random_delay(2, 4)
+                    # Get visible follow buttons
+                    follow_btns = self.page.locator('button:has-text("Follow")').all()
                     
-                    # Like it
-                    like_btn = self.page.locator('[aria-label="Like"], svg[aria-label="Like"]').first
-                    if like_btn.is_visible(timeout=3000):
-                        like_btn.click()
-                        random_delay(2, 4)
-                        liked += 1
-                        log.info(f'  Liked post {i+1}')
+                    for btn in follow_btns:
+                        if followed_count >= max_follows:
+                            break
+                        try:
+                            if btn.is_visible(timeout=2000):
+                                btn.click()
+                                self.stats['followed'] += 1
+                                followed_count += 1
+                                log.info(f'  ✓ Followed #{self.stats["followed"]}')
+                                random_delay(8, 14)
+                        except:
+                            continue
                     
-                    # Close
-                    close_btn = self.page.locator('[aria-label="Close"], svg[aria-label="Close"]').first
-                    if close_btn.is_visible(timeout=3000):
-                        close_btn.click()
-                    random_delay(1, 3)
-                    
-                except Exception as e:
-                    log.warning(f'  Post {i+1} error: {e}')
-                    continue
-            
-            self.stats['liked'] += liked
-            return liked
-            
+                    # Scroll more
+                    self.page.evaluate('document.querySelector("div[role=dialog] div")?.scrollBy(0, 300)')
+                    random_delay(1, 2)
+                
+                # Close dialog
+                try:
+                    self.page.locator('[aria-label="Close"]').first.click()
+                except:
+                    self.page.keyboard.press('Escape')
+        
         except Exception as e:
-            log.error(f'  Like error: {e}')
-            return liked
-    
-    def search_hashtag(self, hashtag):
-        """Search and navigate to a hashtag."""
-        log.info(f'Searching #{hashtag}...')
-        self.page.goto(f'https://www.instagram.com/explore/tags/{hashtag}/', wait_until='networkidle', timeout=30000)
-        random_delay(2, 4)
+            log.warning(f'Follower fetch error: {e}')
     
     def run_growth_cycle(self, cycles=3):
-        """Run one growth cycle: follow users from competitor followers."""
-        cfg = self.config['growth_strategy']
-        competitors = self.config.get('competitor_accounts', [])
+        """Run the main growth cycle loop."""
+        cfg = self.config
         
-        log.info('=' * 50)
-        log.info(f'Starting growth cycle ({cycles} rounds)')
-        log.info('=' * 50)
+        log.info(f'Starting {cycles} growth cycles')
         
-        for cycle in range(cycles):
-            log.info(f'\n--- Cycle {cycle+1}/{cycles} ---')
+        for cycle in range(1, cycles + 1):
+            log.info(f'\n{"="*50}')
+            log.info(f'Cycle {cycle}/{cycles}')
+            log.info(f'{"="*50}')
             
-            for competitor in competitors[:3]:  # Top 3 competitors
-                log.info(f'\nTargeting @{competitor} followers...')
+            # Skip if hourly limits reached
+            ab = cfg.get('anti_ban', {})
+            
+            # Follow from competitor accounts
+            for competitor in cfg.get('competitor_accounts', []):
+                if self.stats['followed'] >= ab.get('daily_follow_limit', 100):
+                    log.info('Daily follow limit reached')
+                    break
+                if self.stats['followed'] >= ab.get('hourly_follow_limit', 30):
+                    log.info('Hourly follow limit, pausing...')
+                    time.sleep(random.uniform(300, 600))
                 
-                if not self.navigate_to_profile(competitor):
-                    continue
-                
-                # Click followers
-                try:
-                    followers_link = self.page.locator('a[href$="/followers/"]').first
-                    if followers_link.is_visible(timeout=5000):
-                        followers_link.click()
-                        random_delay(3, 5)
-                        
-                        # Scroll follower list
-                        for _ in range(30):
-                            self.page.evaluate('document.querySelector("div[role=dialog] div")?.scrollBy(0, 300)')
-                            random_delay(0.5, 1)
-                        
-                        # Find and follow users
-                        follow_btns = self.page.locator('button:has-text("Follow")').all()
-                        log.info(f'  Found {len(follow_btns)} follow buttons')
-                        
-                        followed_this_round = 0
-                        for btn in follow_btns:
-                            if followed_this_round >= cfg['daily_follows'] // (cycles * 3):
-                                break
-                            
-                            try:
-                                btn.click()
-                                # Use InstaTakker's human delay with pause chance
-                                ab = cfg.get('anti_ban', {})
-                                random_delay(ab.get('min_delay_seconds', 8), ab.get('max_delay_seconds', 14))
-                                self.stats['followed'] += 1
-                                followed_this_round += 1
-                                log.info(f'  ✓ Followed #{self.stats["followed"]}')
-                                # Check hourly limit
-                                if followed_this_round >= ab.get('hourly_follow_limit', 30):
-                                    log.info(f'  Hourly limit reached ({followed_this_round}), pausing...')
-                                    time.sleep(random.uniform(300, 600))  # 5-10 min pause
-                            except:
-                                continue
-                        
-                        # Close dialog
-                        try:
-                            close_btn = self.page.locator('[aria-label="Close"]').first
-                            if close_btn.is_visible(timeout=3000):
-                                close_btn.click()
-                        except: pass
-                        
-                except Exception as e:
-                    log.warning(f'  Follower fetch error: {e}')
-                
+                max_follow = min(
+                    ab.get('hourly_follow_limit', 30) // len(cfg.get('competitor_accounts', [1])),
+                    ab.get('daily_follow_limit', 100) // (cycles * len(cfg.get('competitor_accounts', [1])))
+                )
+                self.follow_followers_of(competitor, max_follow=5)
                 random_delay(5, 10)
             
-            # Like some hashtag posts
-            log.info('\nLiking hashtag posts...')
-            for ht in self.config.get('hashtags', [])[:3]:
-                self.search_hashtag(ht)
-                liked = self.like_recent_posts(5)
-                if liked > 0:
-                    log.info(f'  Liked {liked} posts from #{ht}')
+            # Like hashtag posts
+            for ht in cfg.get('hashtags', [])[:3]:
+                try:
+                    self.page.goto(f'https://www.instagram.com/explore/tags/{ht}/', wait_until='networkidle', timeout=30000)
+                    random_delay(3, 5)
+                    liked = self.like_recent_posts(3)
+                    if liked > 0:
+                        log.info(f'  Liked {liked} posts from #{ht}')
+                except Exception as e:
+                    log.warning(f'Hashtag error: {e}')
                 random_delay(3, 6)
         
-        log.info('\n' + '=' * 50)
-        log.info('Growth cycle complete!')
+        log.info(f'\n{"="*50}')
+        log.info('Growth cycles complete!')
         log.info(f'Stats: {json.dumps(self.stats)}')
-        log.info('=' * 50)
     
     def close(self):
         """Clean up browser resources."""
         try:
             self.browser.close()
-        except: pass
+        except:
+            pass
 
 def main():
     parser = argparse.ArgumentParser(description='SHANNON-Ω Instagram Growth Bot')
@@ -290,10 +392,6 @@ def main():
     args = parser.parse_args()
     
     cfg = load_config()
-    log.info('Anti-ban engine loaded from InstaTakker v2.0.0')
-    log.info(f'  Daily follow limit: {cfg["anti_ban"]["daily_follow_limit"]}')
-    log.info(f'  Daily like limit: {cfg["anti_ban"]["daily_like_limit"]}')
-    log.info(f'  Min delay: {cfg["anti_ban"]["min_delay_seconds"]}s, Max delay: {cfg["anti_ban"]["max_delay_seconds"]}s')
     
     # Use command line credentials or config
     username = args.login[0] if args.login else cfg['instagram']['username']
@@ -310,9 +408,15 @@ def main():
     if bot.login(username, password):
         if args.target:
             bot.navigate_to_profile(args.target)
-        if args.like:
+        if args.like and bot.page:
             bot.like_recent_posts(args.like)
         bot.run_growth_cycle(cycles=args.cycles)
+    else:
+        print("\n❌ Login failed. Reasons:")
+        print("   1. Account needs verification — open Instagram on your phone")
+        print("   2. Wrong credentials")
+        print("   3. Instagram is blocking automated logins")
+        print("\n💡 Once verified, the session will be saved and next time will work.")
     
     bot.close()
     
