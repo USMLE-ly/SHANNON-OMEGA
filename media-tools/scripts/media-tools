@@ -54,6 +54,7 @@ case "$CMD" in
     supermemory|memory)     exec supermemory-tool "$@" ;;
     sharp|img)              exec sharp-tool "$@" ;;
     jb|jailbreak)           exec jb-tool "$@" ;;
+    quora|quora-tool)     exec quora-tool "$@" ;;
     omega)              exec omega "$@" ;;
     pro|pro-tool)           exec pro-tool "$@" ;;
     instatakker|insta)      exec instatakker-tool "$@" ;;
@@ -64,3 +65,7 @@ case "$CMD" in
     help|--help|-h)         show_help ;;
     *)                      echo "Unknown command: $CMD"; show_help; exit 1 ;;
 esac
+
+    quora|quora-tool)
+        exec quora-tool "$@"
+        ;;

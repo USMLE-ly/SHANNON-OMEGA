@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# quora-tool — Quora Money System: automated authority pipeline
+set -euo pipefail
+
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+
+PROJECT="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free"
+LIB="$PROJECT/media-tools/scripts/lib"
+
+show_help() {
+    echo "Quora Money System — Authority Pipeline"
+    echo ""
+    echo "Usage: quora-tool <command> [args...]"
+    echo ""
+    echo "Commands:"
+    echo "  discover <niche>           Find high-potential Quora questions"
+    echo "  create <question>          Draft an answer using AI"
+    echo "  track <id> <q> [v] [u]    Log answer performance"
+    echo "  report                     Full system status"
+    echo "  analyze <file>             Analyze PDF/doc for Quora strategy"
+    echo ""
+    echo "Examples:"
+    echo "  quora-tool discover 'digital marketing'"
+    echo "  quora-tool create 'What is the best CRM for small business?'"
+    echo "  quora-tool report"
+    echo "  quora-tool analyze guide.pdf"
+}
+
+if [ $# -eq 0 ]; then
+    show_help
+    exit 0
+fi
+
+CMD="$1"
+shift
+
+case "$CMD" in
+    discover)
+        python3 "$LIB/quora_system.py" discover "$@"
+        ;;
+    create)
+        python3 "$LIB/quora_system.py" create "$@"
+        ;;
+    track)
+        python3 "$LIB/quora_system.py" track "$@"
+        ;;
+    report)
+        python3 "$LIB/quora_system.py" report
+        ;;
+    analyze)
+        python3 -c "
+from markitdown import MarkItDown
+md = MarkItDown()
+r = md.convert('$1')
+print(r.text_content[:3000])
+"
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        python3 "$LIB/quora_system.py" "$CMD $@"
+        ;;
+esac
