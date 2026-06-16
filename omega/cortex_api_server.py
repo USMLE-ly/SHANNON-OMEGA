@@ -83,3 +83,68 @@ if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 7777
     print(f"SHANNON-Ω Cortex API running on http://0.0.0.0:{port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+# ─── COOKIE BRIDGE ENDPOINT ──────────────────────────────────────
+from pydantic import BaseModel
+
+class CookieRelay(BaseModel):
+    url: str
+    timestamp: str
+    userAgent: str = ""
+    cookies: list = []
+    localStorage: list = []
+
+@app.post("/cookies")
+def receive_cookies(data: CookieRelay):
+    """Receive cookies from Tampermonkey userscript."""
+    domain = data.url
+    ts = data.timestamp
+    
+    # Save by domain
+    safe_domain = domain.replace(".", "_").replace(":", "_")
+    path = os.path.join(BASE, "omega", f"cookies_{safe_domain}.json")
+    
+    # Merge with existing
+    existing = []
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                existing = json.load(f)
+        except:
+            pass
+    
+    entry = {
+        "timestamp": ts,
+        "userAgent": data.userAgent,
+        "cookies": data.cookies,
+        "localStorage": data.localStorage,
+    }
+    existing.append(entry)
+    
+    # Keep last 10
+    existing = existing[-10:]
+    
+    with open(path, "w") as f:
+        json.dump(existing, f, indent=2)
+    
+    return {
+        "status": "received",
+        "domain": domain,
+        "cookies_count": len(data.cookies),
+        "total_stored": len(existing),
+        "message": "SHANNON-Ω cookies stored"
+    }
+
+@app.get("/cookies/{domain}")
+def get_cookies(domain: str):
+    """Get stored cookies for a domain."""
+    safe_domain = domain.replace(".", "_").replace(":", "_")
+    path = os.path.join(BASE, "omega", f"cookies_{safe_domain}.json")
+    
+    if not os.path.exists(path):
+        return {"error": "No cookies found", "domain": domain}
+    
+    with open(path) as f:
+        data = json.load(f)
+    
+    return {"domain": domain, "entries": len(data), "latest": data[-1] if data else None}
