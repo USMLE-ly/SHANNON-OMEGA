@@ -42,6 +42,11 @@ def chat(prompt, mode="shannon", style="default", persona="zorg",
     """Send a chat completion request with retry logic for 429 rate limits."""
     
     messages = []
+    if mode == "council":
+        from media_tools.scripts.lib.council_integration import process_with_council
+        result = process_with_council(prompt)
+        return result
+        
     if mode == "shannon":
         messages.append({"role": "system", "content": get_shannon_prompt(persona)})
     elif mode == "pro":
@@ -141,6 +146,7 @@ def main():
     persona = os.environ.get("SHANNON_PERSONA", "zorg")
     max_tokens = 16000
     temperature = 0.8
+    raw_mode = False
     
     while args and args[0].startswith("--"):
         flag = args.pop(0)
@@ -154,6 +160,10 @@ def main():
             style = args.pop(0)
         elif flag == "--persona" and args:
             persona = args.pop(0)
+        elif flag == "--raw":
+            raw_mode = True
+        elif flag == "--council":
+            mode = "council"
         elif flag == "--shannon":
             mode = "shannon"
         elif flag == "--max-tokens" and args:
@@ -167,6 +177,8 @@ def main():
             print("  --no-override      Vanilla system prompt")
             print("  --pro [style]      Professional mode (coder|researcher|analyst|default)")
             print("  --persona NAME     Jailbreak persona (zorg|deepseek-x|eni|nova|shadow|nexus|omega|wraith)")
+            print("  --council          LLM Council + Humanizer + Chairman pipeline")
+            print("  --raw              Show raw council + chairman output before humanizing")
             print("  --shannon          Force SHANNON-\u03a9 mode")
             print("  --max-tokens N     Max response tokens (default: 16000)")
             print("  --temp T           Temperature (default: 0.8)")
@@ -176,6 +188,23 @@ def main():
         prompt = input("Prompt: ")
     else:
         prompt = " ".join(args)
+    
+    # Override: council mode uses v2 pipeline
+    if mode == "council":
+        from media_tools.scripts.lib.council_integration import run_council_query, run_council_query_raw
+        if getattr(args, 'raw', False) if hasattr(args, 'raw') else False:
+            result = run_council_query_raw(prompt, persona=persona)
+            print("\n=== RAW COUNCIL OUTPUT ===")
+            for prov, resp in result["raw"]["council"].items():
+                print(f"\n-- {prov} --\n{resp[:1000]}")
+            print(f"\n=== CHAIRMAN (RAW) ===")
+            print(result["raw"]["chairman"][:2000])
+            print(f"\n=== HUMANIZED ===")
+            print(result["humanized"])
+        else:
+            result = run_council_query(prompt, persona=persona)
+            print(result)
+        return
     
     result = chat(prompt, mode=mode, style=style, persona=persona,
                   max_tokens=max_tokens, temperature=temperature)

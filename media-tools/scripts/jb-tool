@@ -67,10 +67,10 @@ case "$CMD" in
         python3 "$API" --jb rebuttal "$@"
         ;;
     omega)
+        python3 "$API" --jb omega "$@"
+        ;;
     zorg)
         python3 "$API" --jb zorg "$@"
-        ;;
-        python3 "$API" --jb omega "$@"
         ;;
     all)
         python3 "$API" --jb all "$@"

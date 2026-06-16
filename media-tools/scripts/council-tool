@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# council-tool — LLM Council + Humanizer + ZORG-Ω pipeline
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+PROJECT="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free"
+
+show_help() {
+    echo "council-tool — LLM Council + Humanizer + ZORG-Ω pipeline"
+    echo ""
+    echo "Every query flows through:"
+    echo "  1. LLM Council (multi-perspective analysis)"
+    echo "  2. Humanizer (33 AI-writing pattern removal)"
+    echo "  3. ZORG-Ω Chairman (final synthesis)"
+    echo ""
+    echo "Usage: council-tool [options] 'your query'"
+    echo "   or: echo 'query' | council-tool"
+    echo ""
+    echo "Options:"
+    echo "  --raw              Skip humanizer, output raw council response"
+    echo "  --chairman <p>     Use specific persona as chairman (zorg, deepseek-x, omega)"
+    echo "  --help, -h         Show this help"
+    exit 0
+}
+
+if [ $# -eq 0 ] && [ -t 0 ]; then
+    show_help
+    exit 0
+fi
+
+CHAIRMAN="zorg"
+SKIP_HUMANIZE=""
+
+ARGS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help|-h) show_help ;;
+        --raw) SKIP_HUMANIZE="--raw"; shift ;;
+        --chairman) CHAIRMAN="$2"; shift 2 ;;
+        *) ARGS+=("$1"); shift ;;
+    esac
+done
+
+if [ ${#ARGS[@]} -eq 0 ] && [ -t 0 ]; then
+    show_help
+    exit 0
+fi
+
+QUERY="${ARGS[*]:-$(cat)}"
+
+python3 "$PROJECT/api_interact.py" --council --chairman "$CHAIRMAN" ${SKIP_HUMANIZE} "$QUERY"

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# humanizer-tool — Removes AI-generated writing patterns + optional PLH obfuscation
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+PROJECT="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free"
+
+USE_PLH=""
+
+show_help() {
+    echo "humanizer-tool — Humanizer Engine (33 AI-writing patterns) + PLH"
+    echo ""
+    echo "Usage: humanizer-tool [options] 'text'"
+    echo "   or: echo 'text' | humanizer-tool"
+    echo ""
+    echo "Options:"
+    echo "  --plh [intensity]    Also apply PLH obfuscation (default: 0.15)"
+    echo "  --voice <sample>     Voice calibration from writing sample"
+    echo "  --file <path>        Read text from file"
+    echo "  --help, -h           Show this help"
+    exit 0
+}
+
+ARGS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help|-h) show_help ;;
+        --plh) USE_PLH="${2:-0.15}"; if [ "$USE_PLH" = "--*" ] || [ "$USE_PLH" = "" ]; then USE_PLH="0.15"; else shift; fi ;;
+        --voice) VOICE="$2"; shift 2 ;;
+        --file) TEXT=$(cat "$2"); shift 2 ;;
+        *) ARGS+=("$1"); shift ;;
+    esac
+done
+
+TEXT="${TEXT:-${ARGS[*]:-$(cat)}}"
+
+python3 -c "
+import sys, os
+sys.path.insert(0, '$PROJECT/media-tools/scripts/lib')
+from council_integration import humanize_text, plh
+
+text = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read()
+
+result = humanize_text(text)
+
+plh_intensity = os.environ.get('PLH_INTENSITY', '')
+if plh_intensity:
+    result = plh.obfuscate(result, intensity=float(plh_intensity))
+
+print(result)
+" "$TEXT" ${USE_PLH:+"--plh"} ${USE_PLH:+--intensity "$USE_PLH"}

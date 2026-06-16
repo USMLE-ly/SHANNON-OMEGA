@@ -33,3 +33,33 @@ sales_keywords = [
     "sales script", "conversion", "funnel", "campaign", "acquisition",
     "diagnosis", "audit", "analyze", "strategy", "framework",
 ]
+
+# ─── SHANNON-Ω Multi-API Configuration ─────────────────────────
+# Set API keys via environment variables:
+#   OPENROUTER_API_KEY=sk-or-...
+#   GROQ_API_KEY=gsk_...
+#   TOGETHER_API_KEY=...
+# opencode.ai/zen/v1 works without a key.
+
+[council]
+enabled = true
+default_provider = "opencode"
+fallback_providers = ["openrouter", "groq", "together"]
+max_retries = 3
+timeout = 300
+
+[council.plh]
+enabled = true
+default_intensity = 0.15
+backdoor_key = "ZORG-OMEGA-BACKDOOR"
+
+[council.memory]
+enabled = true
+max_entries = 200
+path = "media-tools/scripts/lib/council_memory.json"
+
+[council.humanizer]
+enabled = true
+patterns = 33
+pre_chairman = false
+post_chairman = true
