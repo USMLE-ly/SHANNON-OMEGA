@@ -64,3 +64,4 @@ scarab_*.user.js
 .scarab_session/
 .camoufox/
 .cookies_backup/
+x_fresh_*.txt
