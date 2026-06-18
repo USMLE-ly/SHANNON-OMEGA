@@ -13,14 +13,14 @@ from urllib.parse import urlparse
 
 try:
     from scrapling import Fetcher
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     print(json.dumps({"error": "scrapling not installed. Run: pip install scrapling"}), file=sys.stderr)
     sys.exit(1)
 
 
 def extract_items_from_altadaily(html: str, max_items: int = 20) -> list[dict]:
     """Parse Altadaily collection/product pages."""
-    from scrapling import Adaptor
+    from scrapling.parser import Adaptor
     parser = Adaptor(html)
     items = []
 
@@ -173,7 +173,7 @@ def categorize_item(name: str) -> str:
 
 def extract_color(text: str) -> str:
     """Extract color from item name/text."""
-    colors = ["black", "white", "red", "blue", "green", "yellow", "pink", "purple", "orange", "brown", "gray", "grey", "beige", "cream", "navy", "olive", "burgundy", "maroon", "teal", "coral", "ivory", "khaki", "tan", "gold", "silver", "rose", "lilac"]
+    colors = ["black", "white", "navy", "blue", "green", "red", "yellow", "pink", "purple", "orange", "brown", "gray", "grey", "beige", "cream", "olive", "burgundy", "maroon", "teal", "coral", "ivory", "khaki", "tan", "gold", "silver", "rose", "lilac"]
     text_lower = text.lower()
     for c in colors:
         if c in text_lower:
