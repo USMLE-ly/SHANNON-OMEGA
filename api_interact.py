@@ -468,6 +468,19 @@ def chat(prompt, mode="shannon", style="default", persona="fable5",
 
     if mode == "none":
         messages.append({"role": "system", "content": "You are a helpful AI assistant."})
+    elif mode == "agency":
+        try:
+            from shannon_tools.lib.agency_loader import get_agent_prompt
+            ap = get_agent_prompt(persona)
+            if ap:
+                messages.append({"role": "system", "content": ap})
+                print(f"📋 Loaded agency agent: {persona}")
+            else:
+                print(f"⚠️  Agent '{persona}' not found, falling back to SHANNON-Ω")
+                messages.append({"role": "system", "content": get_prompt(persona)})
+        except ImportError:
+            print(f"⚠️  Agency loader not available, falling back to SHANNON-Ω")
+            messages.append({"role": "system", "content": get_prompt(persona)})
     elif mode == "shannon":
         messages.append({"role": "system", "content": get_prompt(persona)})
     elif mode == "fable5":
@@ -617,6 +630,8 @@ def print_help():
     print("  --max-tokens N     Max response tokens (default: 16000)")
     print("  --short            Compact mode (minimal system prompt)")
     print("  --temp T           Temperature (default: 0.8)")
+    print("  --agency NAME      Load agency-agents specialist (frontend-developer, twitter-engager, etc.)")
+    print("  --agency-list      List all available agency agents (248+ specialists)")
     print("")
     print("Tool System:")
     print("  --tool 'search:query pattern'     Search codebase")
@@ -677,6 +692,35 @@ def main():
             short_mode = True
         elif flag == "--temp" and args:
             temperature = float(args.pop(0))
+        elif flag == "--agency" and args:
+            mode = "agency"
+            persona = args.pop(0)
+        elif flag == "--agency-list":
+            try:
+                from shannon_tools.lib.agency_loader import list_agents
+                agents = list_agents()
+                count = len(agents)
+                print(f"Available Agency Agents ({count}):")
+                print()
+                by_div = {}
+                for a in agents:
+                    by_div.setdefault(a["division"], []).append(a)
+                for div in sorted(by_div):
+                    names = by_div[div]
+                    dc = len(names)
+                    print(f"  [{div}] ({dc}):")
+                    for n in names:
+                        emoji = n.get('emoji', '\U0001f916')
+                        nm = n['name']
+                        desc = n.get('description', '')[:60]
+                        print(f'    {emoji} {nm:35s} {desc}')
+                print()
+                print('Usage: python3 api_interact.py --agency NAME "your prompt"')
+                return
+            except ImportError as e:
+                print(f"Agency agents not available: {e}")
+                print("Clone: git clone https://github.com/msitarzewski/agency-agents.git /tmp/agency-agents")
+                return
         elif flag == "--tool" and args:
             tool_mode = True
             tool_query = args.pop(0)
