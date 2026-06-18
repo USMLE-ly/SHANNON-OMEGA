@@ -182,30 +182,58 @@ def extract_color(text: str) -> str:
 
 
 def scrape_url(url: str, max_items: int = 20, category: str = "") -> list[dict]:
-    """Main scrape function using Scrapling's Fetcher."""
+    """Main scrape function using httpx with Scrapling/Next.js fallback."""
     domain = urlparse(url).netloc.lower()
     
-    fetcher = Fetcher()
-    resp = fetcher.get(url)
+    # 1. Try httpx first
+    items = scrape_with_httpx(url, max_items)
+    if items:
+        if category:
+            items = [i for i in items if i["category"] == category]
+        return items[:max_items]
 
-    if not resp or resp.status != 200:
-        raise Exception(f"Failed to fetch URL: HTTP {resp.status if resp else 'no response'}")
+    # 2. Try Scrapling for HTML parsing
+    try:
+        fetcher = Fetcher()
+        resp = fetcher.get(url)
+        if resp and resp.status == 200 and resp.text and len(resp.text) > 50:
+            items = extract_items_from_altadaily(resp.text, max_items)
+    except Exception as e:
+        print(f"Scrapling failed: {e}", file=sys.stderr)
 
-    html = resp.text
-    if not html:
-        raise Exception("Empty response from URL")
+    # 3. Try Next.js __NEXT_DATA__ parser
+    if not items:
+        try:
+            html = resp.text if 'resp' in dir() and resp else None
+            if not html:
+                import httpx
+                client = httpx.Client(headers={'User-Agent': 'Mozilla/5.0'}, follow_redirects=True, timeout=15)
+                html = client.get(url).text
+            items = extract_from_nextjs(html, max_items)
+            if items:
+                print(f"Extracted {len(items)} items from Next.js data", file=sys.stderr)
+        except Exception as e:
+            print(f"Next.js parser failed: {e}", file=sys.stderr)
 
-    if "altadaily" in domain:
-        items = extract_items_from_altadaily(html, max_items)
-    else:
-        # Generic fallback using common ecommerce patterns
-        items = extract_items_from_altadaily(html, max_items)
+    if not items:
+        raise Exception(f"Could not extract items from URL. The site may use JavaScript rendering or authentication.")
 
-    # Filter by category if specified
     if category:
         items = [i for i in items if i["category"] == category]
 
-    # Deduplicate by name
+    seen = set()
+    unique_items = []
+    for item in items:
+        key = (item["name"], item["url"])
+        if key not in seen:
+            seen.add(key)
+            unique_items.append(item)
+
+    return unique_items[:max_items]
+
+    if category:
+        items = [i for i in items if i["category"] == category]
+
     seen = set()
     unique_items = []
     for item in items:
@@ -217,6 +245,25 @@ def scrape_url(url: str, max_items: int = 20, category: str = "") -> list[dict]:
     return unique_items[:max_items]
 
 
+
+def generate_demo_items(count: int = 10) -> list[dict]:
+    items = [
+        {"name": "Tailored Wool Blazer", "brand": "Theory", "price": "$395", "imageUrl": "", "category": "outerwear", "color": "Navy", "style": "tailored"},
+        {"name": "Cashmere Turtleneck", "brand": "N.Peal", "price": "$295", "imageUrl": "", "category": "tops", "color": "Cream", "style": "luxury"},
+        {"name": "Wide-Leg Trousers", "brand": "Joseph", "price": "$350", "imageUrl": "", "category": "bottoms", "color": "Black", "style": "tailored"},
+        {"name": "Silk Slip Dress", "brand": "Slate", "price": "$245", "imageUrl": "", "category": "dresses", "color": "Burgundy", "style": "evening"},
+        {"name": "Leather Crossbody Bag", "brand": "Staud", "price": "$265", "imageUrl": "", "category": "accessories", "color": "Brown", "style": "minimal"},
+        {"name": "Cashmere Coat", "brand": "Max Mara", "price": "$1,290", "imageUrl": "", "category": "outerwear", "color": "Beige", "style": "timeless"},
+        {"name": "Cotton Oxford Shirt", "brand": "Ami Paris", "price": "$195", "imageUrl": "", "category": "tops", "color": "White", "style": "classic"},
+        {"name": "High-Rise Straight Jeans", "brand": "Mother", "price": "$228", "imageUrl": "", "category": "bottoms", "color": "Blue", "style": "casual"},
+        {"name": "Gold Chain Necklace", "brand": "Missoma", "price": "$89", "imageUrl": "", "category": "accessories", "color": "Gold", "style": "minimal"},
+        {"name": "Knit Polo Shirt", "brand": "Loro Piana", "price": "$695", "imageUrl": "", "category": "tops", "color": "Olive", "style": "refined"},
+        {"name": "Leather Belt", "brand": "The Row", "price": "$490", "imageUrl": "", "category": "accessories", "color": "Black", "style": "minimal"},
+        {"name": "Pleated Midi Skirt", "brand": "Maje", "price": "$285", "imageUrl": "", "category": "bottoms", "color": "Navy", "style": "feminine"},
+    ]
+    return items[:count]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Scrapling Import Tool")
     parser.add_argument("--url", default="https://altadaily.com/collections/all", help="URL to scrape")
@@ -224,11 +271,15 @@ def main():
     parser.add_argument("--category", default="", help="Filter by category")
     parser.add_argument("--output", default="", help="Output JSON file path")
     parser.add_argument("--pretty", action="store_true", help="Pretty print JSON output")
+    parser.add_argument("--demo", action="store_true", help="Use demo data (no web scraping)")
 
     args = parser.parse_args()
 
     try:
-        items = scrape_url(args.url, args.max_items, args.category)
+        if args.demo:
+            items = generate_demo_items(args.max_items)
+        else:
+            items = scrape_url(args.url, args.max_items, args.category)
         output = {"items": items, "count": len(items), "source": args.url}
 
         if args.output:
@@ -248,6 +299,84 @@ if __name__ == "__main__":
 
 
 # If scrapling returns empty, try alternative HTTP libraries
+
+def extract_from_nextjs(html: str, max_items: int = 20) -> list[dict]:
+    """Parse Next.js __NEXT_DATA__ for product information."""
+    import json, re
+    items = []
+    
+    # Find __NEXT_DATA__
+    match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+    if not match:
+        return items
+    
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return items
+    
+    def deep_search(obj, depth=0):
+        if depth > 6:
+            return
+        if isinstance(obj, dict):
+            # Check if this looks like a product
+            if 'name' in obj and 'id' in obj and any(k in obj for k in ['price', 'images', 'image', 'category']):
+                name = str(obj.get('name', ''))
+                if name and len(name) > 2:
+                    price = obj.get('price', '')
+                    if isinstance(price, dict):
+                        price = price.get('amount', price.get('min', ''))
+                    images = obj.get('images', obj.get('image', []))
+                    img_url = ''
+                    if isinstance(images, list) and len(images) > 0:
+                        first_img = images[0]
+                        if isinstance(first_img, dict):
+                            img_url = first_img.get('src', first_img.get('url', first_img.get('original', '')))
+                        elif isinstance(first_img, str):
+                            img_url = first_img
+                    elif isinstance(images, dict):
+                        img_url = images.get('src', images.get('url', ''))
+                    elif isinstance(images, str):
+                        img_url = images
+                    
+                    category = obj.get('category', obj.get('productType', ''))
+                    if isinstance(category, dict):
+                        category = category.get('name', '')
+                    
+                    color = obj.get('color', obj.get('colour', ''))
+                    if isinstance(color, dict):
+                        color = color.get('name', '')
+                    
+                    items.append({
+                        'name': name[:100],
+                        'brand': obj.get('brand', obj.get('vendor', 'Altadaily')),
+                        'price': str(price),
+                        'imageUrl': img_url,
+                        'category': categorize_item(name) if not category else str(category),
+                        'color': extract_color(name) if not color else str(color),
+                        'style': 'editorial',
+                        'url': obj.get('url', obj.get('handle', '')),
+                    })
+                    return
+            
+            # Keep searching deeper
+            for key, val in obj.items():
+                if isinstance(val, (dict, list)):
+                    deep_search(val, depth + 1)
+                    if len(items) >= max_items:
+                        return
+        
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    deep_search(item, depth + 1)
+                    if len(items) >= max_items:
+                        return
+    
+    deep_search(data)
+    return items[:max_items]
+
+
 def scrape_with_httpx(url: str, max_items: int = 20) -> list[dict]:
     """Fallback scraper using httpx which handles more sites."""
     try:
