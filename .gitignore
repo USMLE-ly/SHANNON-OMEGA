@@ -1,68 +1,25 @@
-# Python
+# Python-generated files
 __pycache__/
-*.pyc
-.venv/
-*.egg-info/
-dist/
+*.py[oc]
 build/
+dist/
+wheels/
+*.egg-info
 
-# Node
-node_modules/
-*.log
+# Virtual environments
+.venv/
 
-# Images / screenshots
-*.png
-*.jpg
+# Caches
+/.ruff_cache/
 
-# Credentials
-.ig_credentials.json
-.last_email.json
-.api_cache/
+# Editors
+/.vscode/
 
-# System
-.DS_Store
-Thumbs.db
+# Configuration files
+/config.toml
 
-# Instagram state files (credentials, sessions)
-.ig_*.json
-ig_*.json
-.last_email.json
-omega/challenge_state.json
-omega/omega_status.json
-omega/login_*.png
-omega/challenge_*.png
-omega/*.log
-omega/logs/
-omega/session_cookies.json
-*.srt
-*.pdf
-*.docx
-omega/omega_config.json
+# Study checkpoints
+/checkpoints/
 
-# Debug screenshots
-omega/*.png
-omega/*.jpg
-!omega/scripts/
-last_challenge.json
-
-# Cookies and session data
-cookies_*.json
-*.session.json
-
-# Cached/content data
-content_queue.json
-*_cache*
-*.tv
-*.npy
-
-# Generated scripts
-scarab_*.user.js
-.temp*
-
-# Session dirs
-.quora_session/
-.scarab_session/
-.camoufox/
-.cookies_backup/
-x_fresh_*.txt
-luxor_x_posts.json
+# Residual plots
+/plots/

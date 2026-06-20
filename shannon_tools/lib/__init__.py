@@ -1,1 +1,0 @@
-# SHANNON-Ω tools library
