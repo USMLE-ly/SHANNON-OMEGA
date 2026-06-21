@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# quantmind-tool — Central launcher for QuantMind financial intelligence
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+
+usage() {
+    echo "Usage: quantmind-tool <command> [args...]"
+    echo ""
+    echo "Commands:"
+    echo "  info                    Show QuantMind system info"
+    echo "  extract <file>         Extract financial data from document"
+    echo "  query <file> <q>       Query extracted data"
+    echo "  analyze <file>         Run full financial analysis pipeline"
+    echo "  serve                  Start QuantMind API server"
+    echo ""
+    echo "Examples:"
+    echo "  quantmind-tool info"
+    echo "  quantmind-tool extract report.pdf"
+    echo "  quantmind-tool query data.json \"What is the P/E ratio?\""
+    exit 1
+}
+
+if [ $# -lt 1 ]; then usage; fi
+
+CMD="$1"
+shift
+
+case "$CMD" in
+    info)
+        python3 -c "
+import quantmind
+print('QuantMind v' + getattr(quantmind, '__version__', 'unknown'))
+print('Available modules:', [m for m in dir(quantmind) if not m.startswith('_')])
+"
+        ;;
+    extract)
+        if [ $# -lt 1 ]; then echo "Usage: quantmind-tool extract <file>"; exit 1; fi
+        python3 -m quantmind extract "$@"
+        ;;
+    query)
+        if [ $# -lt 2 ]; then echo "Usage: quantmind-tool query <file> <question>"; exit 1; fi
+        python3 -m quantmind query "$@"
+        ;;
+    analyze)
+        if [ $# -lt 1 ]; then echo "Usage: quantmind-tool analyze <file>"; exit 1; fi
+        python3 -m quantmind analyze "$@"
+        ;;
+    serve)
+        python3 -m quantmind serve
+        ;;
+    *)
+        echo "Unknown command: $CMD"
+        usage
+        ;;
+esac
