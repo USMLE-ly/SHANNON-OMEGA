@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: luxor-pro-tweak
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: FORCE_LOCAL_ONLY
+        value: "1"
+      - key: ZEN_FABLE_URL
+        value: https://opencode.ai/zen/v1/chat/completions

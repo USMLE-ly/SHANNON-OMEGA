@@ -1,0 +1,107 @@
+version: "3.9"
+
+# =============================================================================
+# Luxor Pro Stylist Tweaks — GPU-Accelerated Deployment
+# =============================================================================
+# Architecture:
+#   stylist-tweaks-api  ← FastAPI + Uvicorn (workers=4)
+#   redis-cache         ← Optional: Redis for distributed caching
+#
+# Environment Variables (override in .env or docker-compose.override.yml):
+#   ZENCODE_API_URL     — Open Zencode API endpoint
+#   ZENCODE_MODEL       — Model name (default: deepseek-v4-flash-free)
+#   TWEAK_CACHE_DIR     — Disk cache directory
+#   TWEAK_CACHE_TTL     — Cache TTL in seconds (default: 86400 = 24h)
+# =============================================================================
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ── FastAPI Microservice ──────────────────────────────────────────────────
+  stylist-tweaks-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: luxor-stylist-tweaks
+    restart: unless-stopped
+    ports:
+      - "8767:8767"
+    environment:
+      # Core config
+      - ZENCODE_API_URL=${ZENCODE_API_URL:-https://opencode.ai/zen/v1}
+      - ZENCODE_MODEL=${ZENCODE_MODEL:-deepseek-v4-flash-free}
+      - ZENCODE_TIMEOUT=${ZENCODE_TIMEOUT:-30}
+      - ZENCODE_MAX_PAYLOAD=${ZENCODE_MAX_PAYLOAD:-10485760}
+
+      # Cache config
+      - TWEAK_CACHE_DIR=/data/cache
+      - TWEAK_CACHE_TTL=${TWEAK_CACHE_TTL:-86400}
+
+      # Server config
+      - PORT=8767
+      - WORKERS=${WORKERS:-4}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - tweak-cache-data:/data/cache
+      - ./:/app:ro
+    working_dir: /app
+    command: >
+      uvicorn main:app
+      --host 0.0.0.0
+      --port 8767
+      --workers ${WORKERS:-4}
+      --log-level ${LOG_LEVEL:-info}
+      --proxy-headers
+      --forwarded-allow-ips '*'
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8767/tweaks/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Uncomment if using a Redis cache backend:
+    # depends_on:
+    #   redis-cache:
+    #     condition: service_healthy
+
+  # ── Optional: Redis for distributed cache ─────────────────────────────────
+  # Uncomment to use Redis instead of diskcache for multi-instance deployments
+  #
+  # redis-cache:
+  #   image: redis:7-alpine
+  #   container_name: luxor-tweak-cache
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
+  #   logging: *default-logging
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 1.5g
+
+volumes:
+  tweak-cache-data:
+    driver: local
+  # redis-data:
+  #   driver: local
