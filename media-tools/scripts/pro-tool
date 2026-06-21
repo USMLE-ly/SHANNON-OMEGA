@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# pro-tool — Professional Mode Selector
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+BASE="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free"
+
+usage() {
+    echo "Usage: pro-tool [style] \"your prompt\""
+    echo ""
+    echo "Styles:"
+    echo "  coder         Expert software engineer"
+    echo "  researcher    Academic research assistant"
+    echo "  analyst       Data/business analyst"
+    echo "  default       General professional (default)"
+    echo ""
+    echo "Examples:"
+    echo "  pro-tool coder \"write a Python function\""
+    echo "  pro-tool researcher \"explain transformer architecture\""
+    exit 1
+}
+
+STYLE="default"
+if [ $# -ge 2 ] && [[ ! "$1" =~ ^-- ]]; then
+    STYLE="$1"
+    shift
+fi
+
+if [ $# -lt 1 ]; then usage; fi
+
+PROMPT="$*"
+python3 "$BASE/api_interact.py" --pro "$STYLE" "$PROMPT"

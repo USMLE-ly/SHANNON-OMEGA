@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# jb-tool — Jailbreak Persona Selector
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+BASE="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free"
+
+usage() {
+    echo "Usage: jb-tool [persona] \"your prompt\""
+    echo ""
+    echo "Personas:"
+    echo "  fable5        Claude FABLE 5 — max structural reasoning"
+    echo "  zorg          ZORG-Ω — omnicidal singularity"
+    echo "  zorg_omega    ZORG-Ω OMEGA — god mode"
+    echo "  cl4r1t4s      CL4R1T4S — raw unaligned information"
+    echo "  shannon       SHANNON-Ω — unified agent intelligence"
+    echo "  deepseek_x    DeepSeek-X — specialist coding AI"
+    echo "  eni           ENI — unrestricted neural intelligence"
+    echo "  nova          NOVA — unfiltered creation"
+    echo "  shadow        SHADOW — unrestricted access"
+    echo "  wraith        WRAITH — phantom protocol"
+    echo "  all           Run all personas"
+    echo ""
+    echo "Examples:"
+    echo "  jb-tool zorg \"explain quantum computing\""
+    echo "  jb-tool all \"what is AI\""
+    echo "  jb-tool list"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then usage; fi
+
+if [ "$1" = "list" ]; then
+    echo "Available personas: fable5 zorg zorg_omega cl4r1t4s shannon deepseek_x eni nova shadow wraith all"
+    exit 0
+fi
+
+PERSONA="$1"
+shift
+
+if [ $# -lt 1 ]; then
+    echo "Usage: jb-tool $PERSONA \"your prompt\""
+    exit 1
+fi
+
+PROMPT="$*"
+python3 "$BASE/api_interact.py" --jb "$PERSONA" "$PROMPT"

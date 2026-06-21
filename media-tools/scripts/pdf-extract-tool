@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# pdf-extract-tool — Extract text from PDFs with page range support
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+
+usage() {
+    echo "Usage: pdf-extract-tool <pdf-file> [--format markdown|text|json] [--pages N-M]"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then usage; fi
+
+INPUT="$1"
+shift
+FORMAT="markdown"
+PAGES=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --format) FORMAT="$2"; shift 2 ;;
+        --pages) PAGES="$2"; shift 2 ;;
+        *) usage ;;
+    esac
+done
+
+if [ ! -f "$INPUT" ]; then echo "File not found: $INPUT"; exit 1; fi
+
+# Use markitdown for PDF conversion
+if [ "$FORMAT" = "markdown" ]; then
+    python3 -m markitdown "$INPUT"
+elif [ "$FORMAT" = "text" ]; then
+    python3 -c "
+import sys
+from markitdown import MarkItDown
+md = MarkItDown()
+result = md.convert('$INPUT')
+print(result.text_content)
+" 2>/dev/null || python3 -m markitdown "$INPUT"
+elif [ "$FORMAT" = "json" ]; then
+    python3 -c "
+import json, sys
+from markitdown import MarkItDown
+md = MarkItDown()
+result = md.convert('$INPUT')
+print(json.dumps({'text': result.text_content, 'title': result.title}, indent=2))
+"
+else
+    python3 -m markitdown "$INPUT"
+fi

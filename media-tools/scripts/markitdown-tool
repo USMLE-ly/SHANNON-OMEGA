@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# markitdown-tool — Convert files to Markdown using Microsoft MarkItDown
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+
+if [ $# -lt 1 ]; then
+    echo "Usage: markitdown-tool <file> [output.md]"
+    echo "Converts any document (pdf, docx, pptx, xlsx, image, html) to Markdown"
+    exit 1
+fi
+
+INPUT="$1"
+OUTPUT="${2:-}"
+
+if [ -z "$OUTPUT" ]; then
+    python3 -m markitdown "$INPUT"
+else
+    python3 -m markitdown "$INPUT" > "$OUTPUT"
+    echo "✓ Converted $INPUT → $OUTPUT"
+fi

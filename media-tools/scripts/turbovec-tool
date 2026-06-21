@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# turbovec-tool — Build vector embeddings and indices
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+
+usage() {
+    echo "Usage: turbovec-tool <command> [args...]"
+    echo ""
+    echo "Commands:"
+    echo "  build <input.npy> <output.tv>     Build turbovec index from numpy array"
+    echo "  search <index.tv> <query.npy>     Search for nearest neighbors"
+    echo "  info <index.tv>                   Show index information"
+    echo "  embed <text-file> <output.npy>    Create embeddings (via sentence-transformers)"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then usage; fi
+
+CMD="$1"
+shift
+
+case "$CMD" in
+    build)
+        if [ $# -lt 2 ]; then echo "Usage: turbovec-tool build <input.npy> <output.tv>"; exit 1; fi
+        python3 -c "
+import numpy as np
+from turbovec import TurboVec
+data = np.load('$1')
+tv = TurboVec()
+tv.add(data)
+tv.save('$2')
+print(f'✓ Built index: {data.shape[0]} vectors → $2')
+"
+        ;;
+    search)
+        if [ $# -lt 2 ]; then echo "Usage: turbovec-tool search <index.tv> <query.npy>"; exit 1; fi
+        python3 -c "
+import numpy as np
+from turbovec import TurboVec
+tv = TurboVec()
+tv.load('$1')
+query = np.load('$2')
+distances, indices = tv.search(query, k=10)
+print('Results:', indices.flatten())
+print('Distances:', distances.flatten())
+"
+        ;;
+    info)
+        if [ $# -lt 1 ]; then echo "Usage: turbovec-tool info <index.tv>"; exit 1; fi
+        python3 -c "
+from turbovec import TurboVec
+tv = TurboVec()
+tv.load('$1')
+print(f'Index size: {tv.ntotal}')
+print(f'Dimension: {tv.d}')
+"
+        ;;
+    embed)
+        if [ $# -lt 2 ]; then echo "Usage: turbovec-tool embed <text-file> <output.npy>"; exit 1; fi
+        python3 -c "
+from sentence_transformers import SentenceTransformer
+import numpy as np
+model = SentenceTransformer('all-MiniLM-L6-v2')
+with open('$1') as f:
+    texts = [line.strip() for line in f if line.strip()]
+embeddings = model.encode(texts)
+np.save('$2', embeddings)
+print(f'✓ Embedded {len(texts)} texts → $2 (shape: {embeddings.shape})')
+"
+        ;;
+    *)
+        usage
+        ;;
+esac

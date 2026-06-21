@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# goodreads-tool — Goodreads session manager and book info
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+BASE="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free"
+
+COOKIE_FILE="/tmp/codex-web-uploads/f-rb4yKK/cookie (12).json"
+
+usage() {
+    echo "Usage: goodreads-tool <command> [args]"
+    echo ""
+    echo "Commands:"
+    echo "  shelves          List your Goodreads shelves"
+    echo "  books <shelf>    List books on a shelf (default: to-read)"
+    echo "  session          Show Goodreads session info"
+    echo "  search <query>   Search Goodreads"
+    echo "  isbn <isbn>      Get book info by ISBN"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then usage; fi
+
+CMD="$1"
+shift
+
+case "$CMD" in
+    session)
+        if [ -f "$COOKIE_FILE" ]; then
+            python3 -c "
+import json
+with open('$COOKIE_FILE') as f:
+    cookies = json.load(f)
+print(f'Goodreads cookies: {len(cookies)} entries')
+for c in cookies:
+    if c.get('name') in ('session', 'token', 'user', 'csrf'):
+        print(f'  {c[\"name\"]}: {c.get(\"value\",\"\")[:40]}...')
+"
+        else
+            echo "No Goodreads cookie file found"
+        fi
+        ;;
+    search)
+        python3 -c "
+import requests, json, sys
+from bs4 import BeautifulSoup
+query = ' '.join(sys.argv[1:]) if sys.argv[1:] else '$*'
+url = 'https://www.goodreads.com/search'
+r = requests.get(url, params={'q': query}, timeout=15)
+print(f'Searching Goodreads for: {query}')
+soup = BeautifulSoup(r.text, 'lxml')
+for book in soup.select('tr[itemtype*=\"Book\"]')[:5]:
+    title_el = book.select_one('a[title]')
+    author_el = book.select_one('.authorName')
+    if title_el:
+        print(f'  📖 {title_el[\"title\"]}')
+        if author_el:
+            print(f'     by {author_el.text.strip()}')
+" 2>/dev/null || echo "search requires beautifulsoup4"
+        ;;
+    isbn)
+        ISBN="$*"
+        python3 -c "
+import requests, json, sys
+isbn = '$*'
+url = f'https://www.goodreads.com/search?q={isbn}'
+r = requests.get(url, timeout=15)
+from bs4 import BeautifulSoup
+soup = BeautifulSoup(r.text, 'lxml')
+title = soup.select_one('a[title]')
+if title:
+    print(f'ISBN: {isbn}')
+    print(f'Title: {title[\"title\"]}')
+else:
+    print(f'ISBN {isbn}: not found on Goodreads')
+" 2>/dev/null || echo "ISBN search failed"
+        ;;
+    shelves)
+        # Use the cookie session
+        if [ -f "$COOKIE_FILE" ]; then
+            python3 -c "
+import requests, json
+with open('$COOKIE_FILE') as f:
+    cookies_data = json.load(f)
+cookies = {c['name']: c['value'] for c in cookies_data}
+r = requests.get('https://www.goodreads.com/user/show/202029645', cookies=cookies, timeout=15)
+from bs4 import BeautifulSoup
+soup = BeautifulSoup(r.text, 'lxml')
+for link in soup.select('a[href*=\"shelf\"]'):
+    print(f'  {link.text.strip()}: {link.get(\"href\",\"\")}')
+" 2>/dev/null || echo "Failed to load shelves"
+        else
+            echo "No Goodreads cookie file found"
+        fi
+        ;;
+    books)
+        SHELF="${*:-to-read}"
+        echo "Books on shelf '$SHELF': Use Goodreads web interface"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        usage
+        ;;
+esac

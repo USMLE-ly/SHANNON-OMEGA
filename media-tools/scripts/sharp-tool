@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# sharp-tool — Image processing via Sharp (Node.js)
+set -euo pipefail
+
+usage() {
+    echo "Usage: sharp-tool <command> <image> [args]"
+    echo ""
+    echo "Commands:"
+    echo "  info <image>              Show image metadata"
+    echo "  resize <image> <w>x<h>    Resize image"
+    echo "  crop <image> <w>x<h>      Crop to exact dimensions"
+    echo "  rotate <image> <deg>      Rotate by degrees"
+    echo "  format <image> <fmt>      Convert format (jpg, png, webp)"
+    echo "  compress <image>          Compress (max 80% quality)"
+    exit 1
+}
+
+if [ $# -lt 2 ]; then usage; fi
+
+CMD="$1"
+IMAGE="$2"
+shift 2
+
+if [ ! -f "$IMAGE" ]; then echo "File not found: $IMAGE"; exit 1; fi
+
+OUTDIR="$(dirname "$IMAGE")"
+BASENAME="$(basename "$IMAGE")"
+NAME="${BASENAME%.*}"
+EXT="${BASENAME##*.}"
+
+case "$CMD" in
+    info)
+        node -e "
+const sharp = require('sharp');
+sharp('$IMAGE').metadata().then(m => {
+    console.log('File:', '$IMAGE');
+    console.log('Format:', m.format);
+    console.log('Size:', m.width + 'x' + m.height);
+    console.log('Channels:', m.channels);
+    console.log('Space:', m.space);
+}).catch(e => console.error(e));
+" 2>/dev/null || echo "sharp-tool requires Node.js and sharp package"
+        ;;
+    resize)
+        W="${1%%x*}"
+        H="${1##*x}"
+        OUTPUT="${2:-$OUTDIR/${NAME}_${W}x${H}.$EXT}"
+        node -e "
+const sharp = require('sharp');
+sharp('$IMAGE').resize(${W}, ${H}).toFile('$OUTPUT').then(() => console.log('✓ Resized → $OUTPUT')).catch(e => console.error(e));
+" 2>/dev/null || echo "Error resizing"
+        ;;
+    crop)
+        W="${1%%x*}"
+        H="${1##*x}"
+        OUTPUT="${2:-$OUTDIR/${NAME}_crop_${W}x${H}.$EXT}"
+        node -e "
+const sharp = require('sharp');
+sharp('$IMAGE').resize(${W}, ${H}, {fit: 'cover', position: 'centre'}).toFile('$OUTPUT').then(() => console.log('✓ Cropped → $OUTPUT')).catch(e => console.error(e));
+" 2>/dev/null || echo "Error cropping"
+        ;;
+    rotate)
+        DEG="${1:-90}"
+        OUTPUT="${2:-$OUTDIR/${NAME}_rotated.${EXT}}"
+        node -e "
+const sharp = require('sharp');
+sharp('$IMAGE').rotate(${DEG}).toFile('$OUTPUT').then(() => console.log('✓ Rotated ${DEG}° → $OUTPUT')).catch(e => console.error(e));
+" 2>/dev/null || echo "Error rotating"
+        ;;
+    format)
+        FMT="$1"
+        OUTPUT="${2:-$OUTDIR/${NAME}.${FMT}}"
+        node -e "
+const sharp = require('sharp');
+sharp('$IMAGE').toFormat('${FMT}').toFile('$OUTPUT').then(() => console.log('✓ Converted → $OUTPUT')).catch(e => console.error(e));
+" 2>/dev/null || echo "Error converting"
+        ;;
+    compress)
+        OUTPUT="${1:-$OUTDIR/${NAME}_compressed.${EXT}}"
+        node -e "
+const sharp = require('sharp');
+sharp('$IMAGE').jpeg({quality: 80}).toFile('$OUTPUT').then(() => console.log('✓ Compressed → $OUTPUT')).catch(e => console.error(e));
+" 2>/dev/null || echo "Error compressing"
+        ;;
+    *)
+        usage
+        ;;
+esac

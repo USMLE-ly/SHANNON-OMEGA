@@ -1,138 +1,225 @@
 #!/usr/bin/env python3
 """
-Download the first PDF result for each ISBN from Library Genesis.
-Requires: requests, beautifulsoup4, lxml
-Install with: pip install requests beautifulsoup4 lxml
+SHANNON-Ω Book Downloader
+=========================
+Downloads books from Library Genesis / Anna's Archive by ISBN.
+Tries multiple mirrors with fallback logic.
+
+Usage:
+  python3 download_books.py [isbn1 isbn2 ...]
+  python3 download_books.py --search "fashion design"
+  python3 download_books.py --list
+  
+Dependencies: requests, beautifulsoup4, lxml
 """
 
 import requests
 import re
 import time
 import sys
+import json
+import random
 from pathlib import Path
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-# --- Configuration ---
-ISBNS = [
-    "9781350193901",
-    "9781501382567",
-    "9781472532664",
-    "9781607053552",
-    "9781854799975",
+# --- ISBNs for Fashion Books ---
+DEFAULT_ISBNS = [
+    ("9781350193901", "The Fashion Designer's Sketchbook"),
+    ("9781501382567", "A Guide to Fashion Sewing"),
+    ("9781472532664", "Fashion Sewing"),
+    ("9781607053552", "A Field Guide to Fabric Design"),
+    ("9781854799975", "The Art of Zandra Rhodes"),
 ]
 
-# LibGen mirror that currently works (change if needed)
-LIBGEN_SEARCH = "https://libgen.is/search.php"
-LIBGEN_DOWNLOAD_PAGE = "https://libgen.is/book/index.php?md5="
-# Mirror for direct download – libgen.li often has a clean PDF link
-DIRECT_MIRROR = "https://libgen.li/ads.php?md5="
+# Mirrors to try (ordered by reliability)
+SEARCH_MIRRORS = [
+    "https://libgen.ee/search.php",
+    "https://libgen.li/search.php",
+    "https://libgen.lc/search.php",
+    "https://libgen.gs/search.php",
+]
+
+DOWNLOAD_MIRRORS = [
+    ("https://libgen.li/ads.php?md5=", "libgen.li"),
+    ("https://libgen.ee/ads.php?md5=", "libgen.ee"),
+]
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
-TIMEOUT = 20
-DELAY = 3  # seconds between requests, be polite
+TIMEOUT = 30
+DELAY = 5
 
 OUTPUT_DIR = Path("downloaded_books")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# ------------------------------------------------------------
-
-def search_isbn(isbn):
-    """Return the md5 hash of the first result for the given ISBN, or None."""
-    params = {"req": isbn, "column": "isbn"}
-    try:
-        resp = requests.get(LIBGEN_SEARCH, params=params,
-                            headers=HEADERS, timeout=TIMEOUT)
-        resp.raise_for_status()
-    except Exception as e:
-        print(f"  [!] Search failed for {isbn}: {e}")
-        return None
-
-    soup = BeautifulSoup(resp.text, "lxml")
-    # Results are in a table with class "catalog"
-    table = soup.find("table", class_="catalog")
-    if not table:
-        print(f"  [-] No results table for {isbn}")
-        return None
-
-    # First data row (skip header)
-    rows = table.find_all("tr")
-    for row in rows:
-        # The first link in the row typically points to the book page
-        link = row.find("a", href=re.compile(r"book/index\.php\?md5="))
-        if link:
-            md5 = link["href"].split("md5=")[-1].split("&")[0]
-            print(f"  [+] Found MD5: {md5}")
-            return md5
-
-    print(f"  [-] No MD5 link in results for {isbn}")
+def try_all_searches(isbn):
+    """Search all mirrors for an ISBN and return the first md5 found."""
+    for search_url in SEARCH_MIRRORS:
+        try:
+            resp = requests.get(
+                search_url,
+                params={"req": isbn},
+                headers=HEADERS,
+                timeout=TIMEOUT
+            )
+            resp.raise_for_status()
+            
+            soup = BeautifulSoup(resp.text, "lxml")
+            
+            # Try multiple link patterns
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                m = re.search(r'md5=([a-fA-F0-9]{32})', href)
+                if m:
+                    print(f"  [✓] Found MD5 on {search_url}: {m.group(1)}")
+                    return m.group(1)
+        except Exception as e:
+            print(f"  [ ] {search_url} failed: {type(e).__name__}")
+            continue
     return None
 
-def get_direct_download_url(md5):
-    """Use libgen.li to obtain a direct PDF download link."""
-    url = f"{DIRECT_MIRROR}{md5}"
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        resp.raise_for_status()
-    except Exception as e:
-        print(f"  [!] Failed to reach libgen.li for {md5}: {e}")
-        return None
-
-    soup = BeautifulSoup(resp.text, "lxml")
-    # Look for a link that ends with .pdf or contains 'get.php'
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if href.lower().endswith(".pdf") or "get.php" in href:
-            return urljoin(url, href)  # ensure absolute URL
-
-    # Sometimes the link is behind a button or image
-    for img in soup.find_all("img", alt=True):
-        if "download" in img.get("alt", "").lower():
-            parent = img.find_parent("a")
-            if parent and parent.get("href"):
-                return urljoin(url, parent["href"])
-
-    print(f"  [!] No download link found on libgen.li for {md5}")
+def try_direct_download(md5):
+    """Try to get a direct PDF download URL for an MD5 hash."""
+    for mirror_url, name in DOWNLOAD_MIRRORS:
+        try:
+            url = f"{mirror_url}{md5}"
+            resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+            resp.raise_for_status()
+            
+            soup = BeautifulSoup(resp.text, "lxml")
+            
+            # Look for download links
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.endswith(".pdf") or "get.php" in href or "download" in href.lower():
+                    dl_url = urljoin(url, href)
+                    print(f"  [✓] Found download on {name}: {dl_url[:80]}...")
+                    return dl_url
+            
+            # Check for img download button
+            for img in soup.find_all("img"):
+                alt = img.get("alt", "")
+                if "download" in alt.lower():
+                    parent = img.find_parent("a")
+                    if parent and parent.get("href"):
+                        dl_url = urljoin(url, parent["href"])
+                        return dl_url
+        except Exception as e:
+            print(f"  [ ] {name} download failed: {type(e).__name__}")
+            continue
+    
+    # Fallback: try direct libgen links
+    fallbacks = [
+        f"https://libgen.li/get.php?md5={md5}",
+        f"https://libgen.ee/get.php?md5={md5}",
+        f"http://libgen.la/get.php?md5={md5}",
+    ]
+    for url in fallbacks:
+        try:
+            r = requests.head(url, headers=HEADERS, timeout=15, allow_redirects=True)
+            if r.status_code == 200:
+                print(f"  [✓] Fallback download: {url}")
+                return url
+        except:
+            continue
+    
     return None
 
 def download_file(url, filename):
-    """Stream the file to disk."""
+    """Download a file with progress indicator."""
+    print(f"  ↓ Downloading {Path(filename).name} ...")
     try:
-        resp = requests.get(url, headers=HEADERS, stream=True, timeout=60)
+        resp = requests.get(url, headers=HEADERS, stream=True, timeout=120)
         resp.raise_for_status()
+        total = int(resp.headers.get("content-length", 0))
+        downloaded = 0
         with open(filename, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
                 f.write(chunk)
+                downloaded += len(chunk)
+                if total > 0:
+                    pct = int(100 * downloaded / total)
+                    if pct % 25 == 0 and pct > 0:
+                        print(f"    ... {pct}%")
         return True
     except Exception as e:
-        print(f"  [!] Download failed: {e}")
+        print(f"  [✗] Download error: {e}")
         return False
 
 def main():
-    for isbn in ISBNS:
-        print(f"\n--- Processing ISBN {isbn} ---")
-        md5 = search_isbn(isbn)
+    isbns = DEFAULT_ISBNS
+    
+    # Parse args
+    args = sys.argv[1:]
+    if args and args[0] == "--search":
+        query = " ".join(args[1:])
+        print(f"Searching for: {query}")
+        for url in SEARCH_MIRRORS:
+            try:
+                r = requests.get(url, params={"req": query}, headers=HEADERS, timeout=30)
+                soup = BeautifulSoup(r.text, "lxml")
+                links = soup.find_all("a", href=re.compile(r"md5=[a-fA-F0-9]{32}"))
+                print(f"  {url}: {len(links)} results")
+                for a in links[:5]:
+                    print(f"    → {a.get('href', '')}")
+            except Exception as e:
+                print(f"  {url}: {type(e).__name__}")
+        return
+    elif args and args[0] == "--list":
+        print("Available books:")
+        for isbn, title in DEFAULT_ISBNS:
+            print(f"  {isbn} — {title}")
+        return
+    elif args and args[0].isdigit():
+        isbns = [(args[0], f"book_{args[0]}")]
+    
+    results = {"found": [], "not_found": []}
+    
+    for isbn, title in isbns:
+        print(f"\n{'='*60}")
+        print(f"📖 {title}")
+        print(f"   ISBN: {isbn}")
+        print(f"{'='*60}")
+        
+        md5 = try_all_searches(isbn)
         if not md5:
+            print(f"  [✗] Not found on any mirror")
+            results["not_found"].append(isbn)
+            time.sleep(DELAY)
             continue
-
+        
         time.sleep(DELAY)
-        download_url = get_direct_download_url(md5)
-        if not download_url:
+        dl_url = try_direct_download(md5)
+        if not dl_url:
+            print(f"  [✗] No download link available")
+            results["not_found"].append(isbn)
             continue
-
-        # Filename: use ISBN.pdf, but we could extract title if desired
+        
         out_path = OUTPUT_DIR / f"{isbn}.pdf"
-        print(f"  --> Downloading to {out_path} ...")
-        if download_file(download_url, out_path):
-            print(f"  [\u2713] Success: {out_path}")
+        if download_file(dl_url, out_path):
+            print(f"  [✓] Saved → {out_path}")
+            size = out_path.stat().st_size
+            print(f"      Size: {size/1024/1024:.1f} MB")
+            results["found"].append(isbn)
         else:
-            print(f"  [\u2717] Failed to save {out_path}")
-
+            results["not_found"].append(isbn)
+        
         time.sleep(DELAY)
-
-    print("\nDone.")
+    
+    # Summary
+    print(f"\n{'='*60}")
+    print(f"Download Summary:")
+    print(f"  Found:     {len(results['found'])} books")
+    print(f"  Not found: {len(results['not_found'])} books")
+    if results["not_found"]:
+        print(f"\n  Books not available on LibGen from this network:")
+        for isbn in results["not_found"]:
+            title = next((t for i, t in DEFAULT_ISBNS if i == isbn), isbn)
+            print(f"    {isbn} — {title}")
+        print(f"\n  Try on a different network or use the Goodreads session to access these.")
+    print(f"\n  Output directory: {OUTPUT_DIR.resolve()}")
 
 if __name__ == "__main__":
     main()

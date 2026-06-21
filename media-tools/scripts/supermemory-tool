@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# supermemory-tool — Memory management via Supermemory
+set -euo pipefail
+VENV="/root/Documents/Codex/2026-06-08/make-the-deepseek-v4-flash-free/.venv"
+source "$VENV/bin/activate"
+
+usage() {
+    echo "Usage: supermemory-tool <command> [args...]"
+    echo ""
+    echo "Commands:"
+    echo "  save <key=value>     Save to memory"
+    echo "  get <key>            Get from memory"
+    echo "  search <query>       Search memory"
+    echo "  list                 List all memories"
+    echo "  clear                Clear all memories"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then usage; fi
+
+CMD="$1"
+shift
+
+case "$CMD" in
+    save)
+        python3 -c "
+from supermemory import Memory
+m = Memory()
+for arg in '$@':
+    if '=' in arg:
+        k, v = arg.split('=', 1)
+        m.save(k, v)
+print('Saved')
+"
+        ;;
+    get)
+        python3 -c "
+from supermemory import Memory
+import sys
+m = Memory()
+val = m.get('$1')
+print(val if val else 'Not found')
+"
+        ;;
+    search)
+        python3 -c "
+from supermemory import Memory
+m = Memory()
+results = m.search('$1')
+for r in results:
+    print(r)
+"
+        ;;
+    list)
+        python3 -c "
+from supermemory import Memory
+m = Memory()
+for item in m.list():
+    print(item)
+" 2>/dev/null || echo "Memory listing not supported or empty"
+        ;;
+    clear)
+        python3 -c "
+from supermemory import Memory
+m = Memory()
+m.clear()
+print('Memory cleared')
+"
+        ;;
+    *)
+        usage
+        ;;
+esac
