@@ -337,29 +337,33 @@ export default function Analysis() {
     setLoading(true);
     try {
       const b64 = await getBase64(file);
-      const { data: fnData, error } = await supabase.functions.invoke("analyze-outfit", {
-        body: { image_b64: b64 },
+      const apiUrl = import.meta.env.VITE_PUBLIC_API_URL || 'https://python--libyausmle.replit.app';
+      const response = await fetch(apiUrl + '/api/v1/analyze-outfit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_b64: b64 }),
       });
-      if (error) throw error;
-      if (!fnData || !fnData.overallStyle) throw new Error("Invalid analysis response");
+      if (!response.ok) throw new Error('Server returned ' + response.status);
+      const fnData = await response.json();
+      if (!fnData || !fnData.success) throw new Error('Analysis failed');
 
-      // Map the edge‑function response to our UI shape
+      // Map the Fable 5 response to our UI shape
       const o: OutfitData = {
-        style_name: fnData.overallStyle || "Classic Edge",
-        actual_colors: fnData.colorPalette?.colors || ["#333", "#666", "#999"],
-        items_detected: (fnData.detectedItems || []).map((i: any) => i.name),
+        style_name: fnData.style_name || 'Classic Edge',
+        actual_colors: fnData.actual_colors || ['#333', '#666', '#999'],
+        items_detected: fnData.items_detected || [],
         strengths: fnData.strengths || [],
-        audit: fnData.summary || "A well‑balanced look.",
-        tweak_plan: fnData.improvements?.[0]?.suggestion || "Add a statement accessory.",
-        generation_prompt: "",
-        style_score: fnData.styleScore || 75,
-        seasonalFit: fnData.seasonalFit || "All‑season",
+        audit: fnData.audit || 'A well-balanced look.',
+        tweak_plan: fnData.tweak_plan || 'Add a statement accessory.',
+        generation_prompt: fnData.generation_prompt || '',
+        style_score: fnData.style_score || 75,
+        seasonalFit: fnData.seasonalFit || 'All-season',
       };
       setData(o);
       setSavedId(null);
-      toast.success("Outfit analyzed! ✨");
+      toast.success('Outfit analyzed! ✨');
     } catch (e: any) {
-      toast.error(e.message || "Analysis failed");
+      toast.error(e.message || 'Analysis failed');
     } finally {
       setLoading(false);
     }
