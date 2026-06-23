@@ -158,7 +158,7 @@ function ProStylistTweakBlock({ imagePreview }: { imagePreview: string | null })
           fr.readAsDataURL(blob);
         });
       }
-      const api = import.meta.env.VITE_PUBLIC_API_URL || "https://python--libyausmle.replit.app";
+      const api = import.meta.env.VITE_PUBLIC_API_URL || 'https://python--libyausmle.replit.app';
       const resp = await fetch(`${api}/api/v1/pro-tweak/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
