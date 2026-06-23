@@ -1,0 +1,142 @@
+import React, { CSSProperties, ReactNode } from 'react';
+
+type IPhoneModel = '14' | '14-pro' | '15' | '15-pro' | 'x' | 'plain';
+type Orientation = 'portrait' | 'landscape';
+type WallpaperFit = 'cover' | 'contain' | 'fill';
+
+export interface IPhoneMockupProps {
+  model?: IPhoneModel;
+  color?: string;
+  orientation?: Orientation;
+  scale?: number;
+  bezel?: number;
+  radius?: number;
+  shadow?: boolean | string;
+  screenBg?: string;
+  wallpaper?: string;
+  wallpaperFit?: WallpaperFit;
+  wallpaperPosition?: string;
+  showDynamicIsland?: boolean;
+  showNotch?: boolean;
+  islandWidth?: number;
+  islandHeight?: number;
+  islandRadius?: number;
+  notchWidth?: number;
+  notchHeight?: number;
+  notchRadius?: number;
+  safeArea?: boolean;
+  safeAreaOverrides?: Partial<{ top: number; bottom: number; left: number; right: number }>;
+  showHomeIndicator?: boolean;
+  innerShadow?: boolean;
+  style?: CSSProperties;
+  className?: string;
+  frameStyle?: CSSProperties;
+  screenStyle?: CSSProperties;
+  children?: ReactNode;
+}
+
+const DEVICE_SPECS: Record<IPhoneModel, {
+  w: number; h: number; radius: number; bezel: number;
+  topSafe: number; bottomSafe: number;
+  notch?: { w: number; h: number; r: number };
+  island?: { w: number; h: number; r: number };
+}> = {
+  x: { w: 375, h: 812, radius: 50, bezel: 12, topSafe: 47, bottomSafe: 34, notch: { w: 210, h: 35, r: 18 } },
+  '14': { w: 390, h: 844, radius: 56, bezel: 12, topSafe: 47, bottomSafe: 34, notch: { w: 225, h: 33, r: 18 } },
+  '14-pro': { w: 393, h: 852, radius: 56, bezel: 12, topSafe: 59, bottomSafe: 34, island: { w: 126, h: 37, r: 20 } },
+  '15': { w: 393, h: 852, radius: 56, bezel: 12, topSafe: 59, bottomSafe: 34, island: { w: 126, h: 37, r: 20 } },
+  '15-pro': { w: 393, h: 852, radius: 56, bezel: 12, topSafe: 59, bottomSafe: 34, island: { w: 126, h: 37, r: 20 } },
+  plain: { w: 390, h: 844, radius: 56, bezel: 12, topSafe: 16, bottomSafe: 16 },
+};
+
+const PRESET_COLORS: Record<string, string> = {
+  black: '#0b0b0d', midnight: '#0b0c10', silver: '#d7d8dc', starlight: '#f1eee9',
+  'space-black': '#1c1e22', gold: '#f2dfb3', blue: '#2b4fa8', pink: '#ffbfd1',
+  titanium: '#837a72', 'natural-titanium': '#a69a8a', green: '#2b622e', red: '#c81f2f',
+};
+
+function shade(hex: string, pct: number): string {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const [r, g, b] = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+  const k = (100 + pct) / 100;
+  const to = (v: number) => Math.max(0, Math.min(255, Math.round(v * k)));
+  return `#${to(r).toString(16).padStart(2, '0')}${to(g).toString(16).padStart(2, '0')}${to(b).toString(16).padStart(2, '0')}`;
+}
+
+export const IPhoneMockup: React.FC<IPhoneMockupProps> = ({
+  model = '14-pro', color = 'space-black', orientation = 'portrait', scale = 1,
+  bezel, radius, shadow = true, screenBg = '#000',
+  wallpaper, wallpaperFit = 'cover', wallpaperPosition = 'center',
+  showDynamicIsland, showNotch,
+  islandWidth, islandHeight, islandRadius, notchWidth, notchHeight, notchRadius,
+  safeArea = false, safeAreaOverrides, showHomeIndicator = true, innerShadow = true,
+  style, className, frameStyle, screenStyle, children,
+}) => {
+  const spec = DEVICE_SPECS[model];
+  const isLandscape = orientation === 'landscape';
+  const screenWidth = isLandscape ? spec.h : spec.w;
+  const screenHeight = isLandscape ? spec.w : spec.h;
+  const resolvedRadius = radius ?? spec.radius;
+  const resolvedBezel = bezel ?? spec.bezel;
+  const outerWidth = screenWidth + resolvedBezel * 2;
+  const outerHeight = screenHeight + resolvedBezel * 2;
+  const outerRadius = resolvedRadius + resolvedBezel;
+  const colorHex = PRESET_COLORS[color] ?? color;
+  const frameGradient = `linear-gradient(145deg, ${shade(colorHex, 18)} 0%, ${shade(colorHex, 6)} 20%, ${colorHex} 45%, ${shade(colorHex, -10)} 70%, ${shade(colorHex, -20)} 100%)`;
+
+  const useIsland = typeof showDynamicIsland === 'boolean' ? showDynamicIsland : Boolean(spec.island);
+  const useNotch = typeof showNotch === 'boolean' ? showNotch : Boolean(spec.notch) && !useIsland;
+
+  const finalIslandW = islandWidth ?? spec.island?.w ?? 0;
+  const finalIslandH = islandHeight ?? spec.island?.h ?? 0;
+  const finalIslandR = islandRadius ?? spec.island?.r ?? 0;
+  const finalNotchW = notchWidth ?? spec.notch?.w ?? 0;
+  const finalNotchH = notchHeight ?? spec.notch?.h ?? 0;
+  const finalNotchR = notchRadius ?? spec.notch?.r ?? 0;
+
+  const insets = {
+    top: safeAreaOverrides?.top ?? spec.topSafe,
+    bottom: safeAreaOverrides?.bottom ?? spec.bottomSafe,
+    left: safeAreaOverrides?.left ?? 0,
+    right: safeAreaOverrides?.right ?? 0,
+  };
+
+  const outerShadow = typeof shadow === 'string' ? shadow : shadow ? '0 0 0 1px rgba(255,255,255,0.08), 0 0 20px rgba(255,255,255,0.04), 0 8px 32px rgba(0,0,0,0.5), 0 20px 60px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.3)' : 'none';
+  const innerShadowCss = innerShadow ? 'inset 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.1), inset 0 10px 20px rgba(0,0,0,0.35), inset 0 -8px 16px rgba(0,0,0,0.28)' : 'none';
+
+  const cutoutCommon: CSSProperties = {
+    position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+    background: '#000', zIndex: 2, boxShadow: '0 1px 2px rgba(0,0,0,0.7)',
+  };
+
+  const contentStyle: CSSProperties = safeArea
+    ? { position: 'absolute', top: insets.top, right: insets.right, bottom: insets.bottom, left: insets.left, overflow: 'hidden', zIndex: 1, display: 'flex', flexDirection: 'column' }
+    : { position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 1, display: 'flex', flexDirection: 'column' };
+
+  return (
+    <div className={className} style={{ display: 'inline-block', transform: `scale(${scale})`, transformOrigin: 'top center', ...style }}>
+      <div style={{ width: outerWidth, height: outerHeight, borderRadius: outerRadius, background: frameGradient, padding: resolvedBezel, boxSizing: 'border-box', boxShadow: outerShadow, position: 'relative', overflow: 'hidden', ...frameStyle }} aria-label={`iPhone mockup (${model})`}>
+        {/* Titanium edge highlight */}
+        <div aria-hidden style={{ position: 'absolute', inset: 0, borderRadius: outerRadius, border: '1px solid rgba(255,255,255,0.08)', pointerEvents: 'none', zIndex: 4 }} />
+        <div aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '50%', borderRadius: `${outerRadius}px ${outerRadius}px 0 0`, background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 100%)', pointerEvents: 'none', zIndex: 4 }} />
+        {/* Side buttons */}
+        <div aria-hidden style={{ position: 'absolute', left: -2, top: 160, width: 3, height: 32, borderRadius: '2px 0 0 2px', background: `linear-gradient(180deg, ${shade(colorHex, 10)}, ${shade(colorHex, -8)})`, zIndex: 5 }} />
+        <div aria-hidden style={{ position: 'absolute', left: -2, top: 210, width: 3, height: 52, borderRadius: '2px 0 0 2px', background: `linear-gradient(180deg, ${shade(colorHex, 10)}, ${shade(colorHex, -8)})`, zIndex: 5 }} />
+        <div aria-hidden style={{ position: 'absolute', left: -2, top: 275, width: 3, height: 52, borderRadius: '2px 0 0 2px', background: `linear-gradient(180deg, ${shade(colorHex, 10)}, ${shade(colorHex, -8)})`, zIndex: 5 }} />
+        <div aria-hidden style={{ position: 'absolute', right: -2, top: 220, width: 3, height: 72, borderRadius: '0 2px 2px 0', background: `linear-gradient(180deg, ${shade(colorHex, 10)}, ${shade(colorHex, -8)})`, zIndex: 5 }} />
+        <div style={{ width: '100%', height: '100%', borderRadius: resolvedRadius, position: 'relative', overflow: 'hidden', background: screenBg, boxShadow: innerShadowCss, ...screenStyle }}>
+          {wallpaper && <div aria-hidden style={{ position: 'absolute', inset: 0, backgroundImage: `url(${wallpaper})`, backgroundSize: wallpaperFit, backgroundPosition: wallpaperPosition, backgroundRepeat: 'no-repeat', zIndex: 0 }} />}
+          {useIsland && finalIslandW > 0 && <div aria-hidden style={{ ...cutoutCommon, top: 12, width: finalIslandW, height: finalIslandH, borderRadius: finalIslandR }} />}
+          {!useIsland && useNotch && finalNotchW > 0 && <div aria-hidden style={{ ...cutoutCommon, top: 8, width: finalNotchW, height: finalNotchH, borderRadius: finalNotchR }} />}
+          <div style={contentStyle}>{children}</div>
+          {showHomeIndicator && (
+            <div aria-hidden style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', width: Math.round(screenWidth * 0.34), maxWidth: 140, height: 5, borderRadius: 3, background: 'linear-gradient(180deg, rgba(255,255,255,0.7), rgba(255,255,255,0.35))', opacity: 0.9, zIndex: 3, pointerEvents: 'none' }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default IPhoneMockup;
