@@ -138,7 +138,7 @@ const itemAnim = {
 /* ------------------------------------------------------------------ */
 /*  Pro Stylist Tweak Sub‑component                                    */
 /* ------------------------------------------------------------------ */
-function ProStylistTweakBlock({ imagePreview }: { imagePreview: string | null }) {
+function ProStylistTweakBlock({ imagePreview, generationPrompt, tweakPlan }: { imagePreview: string | null; generationPrompt?: string; tweakPlan?: string; }) {
   const [result, setResult] = useState<{
     tweaked_image_url: string; suggestion: string; source: string;
   } | null>(null);
@@ -160,19 +160,21 @@ function ProStylistTweakBlock({ imagePreview }: { imagePreview: string | null })
         });
       }
       const api = import.meta.env.VITE_PUBLIC_API_URL || 'https://python--libyausmle.replit.app';
-      const resp = await fetch(`${api}/api/v1/pro-tweak/generate`, {
+      const resp = await fetch(api + '/api/v1/pro-tweak/generate', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_b64: b64 }),
+        body: JSON.stringify({ image_b64: b64, generation_prompt: generationPrompt || '' }),
       });
-      if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || `Error ${resp.status}`);
+      if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || 'Error ' + resp.status);
       const d = await resp.json();
-      setResult({ tweaked_image_url: d.tweaked_image_url, suggestion: d.suggestion || "", source: d.source || "" });
-      toast.success("✨ Divine tweak generated!");
+      setResult({ tweaked_image_url: d.tweaked_image_url, suggestion: d.suggestion || '', source: d.source || '' });
+      toast.success('Divine tweak generated!');
     } catch (e: any) {
       setError(e.message); toast.error(e.message);
     } finally { setLoading(false); }
   };
+
+  const suggestion = result?.suggestion || tweakPlan || '';
 
   return (
     <motion.div variants={itemAnim}>
@@ -201,15 +203,14 @@ function ProStylistTweakBlock({ imagePreview }: { imagePreview: string | null })
                 )}
               </div>
             )}
+
             {loading && (
               <div className="text-center py-10 space-y-4">
                 <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-                <p className="font-display text-base">Consulting the cosmic style deities…</p>
-                <div className="max-w-xs mx-auto space-y-2">{[1, 2, 3].map((i) => (
-                  <div key={i} className="h-2 rounded-full bg-muted animate-pulse" style={{ width: `${100 - i * 20}%`, animationDelay: `${i * 0.2}s` }} />
-                ))}</div>
+                <p className="font-display text-base">Consulting the cosmic style deities...</p>
               </div>
             )}
+
             {error && !loading && (
               <div className="text-center py-6 space-y-3">
                 <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
@@ -217,8 +218,20 @@ function ProStylistTweakBlock({ imagePreview }: { imagePreview: string | null })
                 <Button variant="outline" onClick={handleGenerate}><RefreshCw className="h-4 w-4 mr-2" /> Try Again</Button>
               </div>
             )}
+
             {result && !loading && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+                {/* Divine Edit description */}
+                {suggestion && (
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                    <Sparkles className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Divine Edit</p>
+                      <p className="text-sm text-muted-foreground mt-1">{suggestion}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -238,18 +251,10 @@ function ProStylistTweakBlock({ imagePreview }: { imagePreview: string | null })
                     </div>
                   </div>
                 </div>
-                {result.suggestion && (
-                  <div className="flex items-start gap-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
-                    <Sparkles className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">Stylist&apos;s Verdict</p>
-                      <p className="text-sm text-muted-foreground mt-1">{result.suggestion}</p>
-                    </div>
-                  </div>
-                )}
+
                 <div className="flex items-center justify-between">
                   <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    Source: {result.source === "cipher_vision" ? "✨ Cipher Vision AI" : "📊 Local Stylist"}
+                    Source: {result.source === "cipher_vision" ? "Cipher Vision AI" : "Local Stylist"}
                   </Badge>
                   <Button size="sm" variant="outline" onClick={handleGenerate} className="border-primary/30 hover:bg-primary/10">
                     <RefreshCw className="w-3 h-3 mr-1" /> Regenerate
@@ -263,7 +268,6 @@ function ProStylistTweakBlock({ imagePreview }: { imagePreview: string | null })
     </motion.div>
   );
 }
-
 /* ------------------------------------------------------------------ */
 /*  Main Page                                                          */
 /* ------------------------------------------------------------------ */
@@ -632,7 +636,7 @@ export default function Analysis() {
                 </div>
 
                 {/* ---- Pro Stylist Tweak ---- */}
-                <ProStylistTweakBlock imagePreview={imagePreview} />
+                <ProStylistTweakBlock imagePreview={imagePreview} generationPrompt={data?.generation_prompt} tweakPlan={data?.tweak_plan} />
 
                 {/* ---- Cosmic Audit ---- */}
                 <motion.div variants={childVariants}>
