@@ -351,17 +351,17 @@ export default function Analysis() {
       const fnData = await response.json();
       if (!fnData || !fnData.success) throw new Error('Analysis failed');
 
-      // Map the Fable 5 response to our UI shape
+      // Map the Fable 5 response to our UI shape - NO fallback dummies
       const o: OutfitData = {
-        style_name: fnData.style_name || 'Classic Edge',
-        actual_colors: fnData.actual_colors || ['#333', '#666', '#999'],
+        style_name: fnData.style_name || '',
+        actual_colors: fnData.actual_colors || [],
         items_detected: fnData.items_detected || [],
         strengths: fnData.strengths || [],
-        audit: fnData.audit || 'A well-balanced look.',
-        tweak_plan: fnData.tweak_plan || 'Add a statement accessory.',
+        audit: fnData.audit || '',
+        tweak_plan: fnData.tweak_plan || '',
         generation_prompt: fnData.generation_prompt || '',
-        style_score: fnData.style_score || 75,
-        seasonalFit: fnData.seasonalFit || 'All-season',
+        style_score: fnData.style_score || 0,
+        seasonalFit: fnData.seasonalFit || '',
       };
       setData(o);
       setSavedId(null);
@@ -392,13 +392,13 @@ export default function Analysis() {
         user_id: user.id,
         image_url: publicUrl,
         overall_style: data.style_name,
-        style_score: data.style_score || 75,
+        style_score: data.style_score || 0,
         summary: data.audit,
         detected_items: data.items_detected.map((n) => ({ name: n, category: "Item", color: "N/A", style: "N/A" })),
         color_palette: { colors: data.actual_colors, harmony: "Balanced", rating: "Good" },
         strengths: data.strengths,
         improvements: [{ suggestion: data.tweak_plan, reason: "AI suggestion", priority: "medium" }],
-        seasonal_fit: data.seasonalFit || "All‑season",
+        seasonal_fit: data.seasonalFit || '',
         body_type_notes: "",
       }).select("id").single();
       if (error) throw error;
@@ -415,14 +415,14 @@ export default function Analysis() {
     setImagePreview(s.image_url);
     setImageFile(null);
     setData({
-      style_name: s.overall_style,
-      actual_colors: (s.color_palette as any)?.colors || ["#333", "#666", "#999"],
-      items_detected: ((s.detected_items || []) as any[]).map((i: any) => i.name || ""),
+      style_name: s.overall_style || '',
+      actual_colors: (s.color_palette as any)?.colors || [],
+      items_detected: ((s.detected_items || []) as any[]).map((i: any) => i.name || ''),
       strengths: (s.strengths as string[]) || [],
-      audit: s.summary || "",
-      tweak_plan: "",
-      generation_prompt: "",
-      style_score: s.style_score || 75,
+      audit: s.summary || '',
+      tweak_plan: '',
+      generation_prompt: '',
+      style_score: s.style_score || 0,
     });
     setSavedId(s.id);
   };
@@ -527,7 +527,7 @@ export default function Analysis() {
                     <GlowingEffect spread={60} glow proximity={80} inactiveZone={0.01} borderWidth={3} />
                     <Card className="glass-card border-0 shadow-none">
                       <CardContent className="p-6 flex flex-col md:flex-row items-center gap-6">
-                        <CircularScore score={data.style_score || 75} />
+                        <CircularScore score={data.style_score || 0} />
                         <div className="flex-1 text-center md:text-left">
                           <h2 className="font-display text-2xl font-bold gold-text">{data.style_name}</h2>
                           <p className="text-muted-foreground mt-2 text-sm leading-relaxed">{data.audit}</p>
