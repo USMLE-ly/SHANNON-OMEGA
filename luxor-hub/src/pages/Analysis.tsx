@@ -351,21 +351,62 @@ export default function Analysis() {
       r.readAsDataURL(file);
     });
 
+  // Compress image on the client before sending — eliminates network + backend timeout
+  const compressImage = (file: File, maxDim = 1024, quality = 0.7): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round(height * maxDim / width);
+            width = maxDim;
+          } else {
+            width = Math.round(width * maxDim / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1]);
+      };
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = URL.createObjectURL(file);
+    });
+
   const analyzeOutfit = async (file: File) => {
     setLoading(true);
     try {
-      const b64 = await getBase64(file);
+      // Compress first — phone photos are 3-12 MB, this shrinks them to ~100-200 KB
+      const b64 = await compressImage(file);
       const apiUrl = import.meta.env.VITE_PUBLIC_API_URL || 'https://python--libyausmle.replit.app';
-      const response = await fetch(apiUrl + '/api/v1/analyze-outfit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_b64: b64 }),
-      });
-      if (!response.ok) throw new Error('Server returned ' + response.status);
-      const fnData = await response.json();
-      if (!fnData || !fnData.success) throw new Error('Analysis failed');
-      // Reject local fallback data — show empty state instead of hallucinated items/colors
-      if (fnData.source === 'local') throw new Error('Cipher Vision unavailable, try again later');
+
+      // Retry loop — Cipher Vision can be slow; retry with backoff instead of giving up
+      let fnData: any = null;
+      let lastError = '';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+          // Wait 2s, 4s before retrying
+          await new Promise(r => setTimeout(r, 2000 * attempt));
+        }
+        const response = await fetch(apiUrl + '/api/v1/analyze-outfit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_b64: b64 }),
+        });
+        if (!response.ok) throw new Error('Server returned ' + response.status);
+        fnData = await response.json();
+        if (!fnData || !fnData.success) throw new Error('Analysis failed');
+        if (fnData.source === 'cipher_vision') break; // success — exit retry loop
+        lastError = 'Cipher Vision unavailable, try again later';
+        // source === 'local' — retry
+      }
+      if (!fnData || fnData.source !== 'cipher_vision') {
+        throw new Error(lastError || 'Cipher Vision unavailable, try again later');
+      }
 
       // Map the Fable 5 response to our UI shape - NO fallback dummies
       const o: OutfitData = {
@@ -384,6 +425,19 @@ export default function Analysis() {
       toast.success('Outfit analyzed! ✨');
     } catch (e: any) {
       toast.error(e.message || 'Analysis failed');
+      // If the error is about Cipher Vision, show a retry CTA instead of dead end
+      if (e.message && e.message.includes('Cipher Vision') && file) {
+        const retryFile = file;
+        setTimeout(() => {
+          toast(
+            <div className="flex items-center gap-2">
+              <span>Click to retry analysis</span>
+              <Button size="sm" variant="outline" onClick={() => analyzeOutfit(retryFile)}>Retry</Button>
+            </div>,
+            { duration: 8000 }
+          );
+        }, 500);
+      }
     } finally {
       setLoading(false);
     }
