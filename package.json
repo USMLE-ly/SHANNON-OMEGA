@@ -24,12 +24,7 @@
     "clsx": "^2.1.1",
     "class-variance-authority": "^0.7.1"
   },
-  "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "^4.62.2",
-    "@rollup/rollup-linux-x64-musl": "^4.0.0",
-    "@rollup/rollup-linux-arm64-gnu": "^4.0.0",
-    "@rollup/rollup-linux-arm64-musl": "^4.0.0",
-    "@esbuild/linux-x64": "^0.25.0",
-    "@esbuild/linux-arm64": "^0.25.0"
+  "overrides": {
+    "rollup": "4.21.3"
   }
 }
