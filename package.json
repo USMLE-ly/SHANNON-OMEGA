@@ -1,9 +1,18 @@
 {
   "name": "luxor-hub-monorepo",
   "private": true,
+  "workspaces": ["luxor-hub"],
   "scripts": {
-    "build": "npm --prefix luxor-hub run build",
-    "dev": "npm --prefix luxor-hub run dev",
-    "preview": "npm --prefix luxor-hub run preview"
+    "build": "npm run build -w luxor-hub",
+    "dev": "npm run dev -w luxor-hub",
+    "preview": "npm run preview -w luxor-hub"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.62.2",
+    "@rollup/rollup-linux-x64-musl": "^4.0.0",
+    "@rollup/rollup-linux-arm64-gnu": "^4.0.0",
+    "@rollup/rollup-linux-arm64-musl": "^4.0.0",
+    "@esbuild/linux-x64": "^0.25.0",
+    "@esbuild/linux-arm64": "^0.25.0"
   }
 }
