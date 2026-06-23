@@ -401,7 +401,7 @@ function handleUploadClick() {
       const reader = new FileReader();
       reader.onloadend = () => {
         sessionStorage.setItem("pendingUpload", reader.result as string);
-        window.location.href = "/analysis";
+        window.location.href = "/outfit-analysis";
       };
       reader.readAsDataURL(file);
     }
