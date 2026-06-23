@@ -51,6 +51,9 @@ import Blog from "./pages/Blog";
 import BlogArticle from "./pages/BlogArticle";
 import DeepDive from "./pages/DeepDive";
 import DressingRoom from "./pages/DressingRoom";
+// API URL fallback for runtime safety
+const API_URL = import.meta.env.VITE_PUBLIC_API_URL || "https://python--libyausmle.replit.app";
+
 
 
 // Tracks route changes for Facebook Pixel
