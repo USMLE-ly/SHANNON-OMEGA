@@ -13,6 +13,7 @@ import {
   Loader2, Instagram, Twitter, ExternalLink, Eye, RefreshCw, AlertTriangle,
   TrendingUp, Layers, ArrowLeftRight, X
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
