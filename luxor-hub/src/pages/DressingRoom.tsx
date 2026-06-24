@@ -85,7 +85,18 @@ export default function DressingRoom() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [uploadHover, setUploadHover] = useState(false);
 
-  const fetchItems = async () => {
+  
+  const [showOutfitModal, setShowOutfitModal] = useState(false);
+  const [outfitGenerating, setOutfitGenerating] = useState(false);
+  const [generatedOutfit, setGeneratedOutfit] = useState(null);
+  const occasionOptions = [
+    { id: "night-event", label: "Night Event", emoji: "tie" },
+    { id: "sport", label: "Sport", emoji: "run" },
+    { id: "work", label: "Work", emoji: "case" },
+    { id: "casual", label: "Casual", emoji: "smile" },
+    { id: "date-night", label: "Date Night", emoji: "heart" },
+  ];
+const fetchItems = async () => {
     if (!user) return;
     setLoading(true);
     const { data } = await supabase
@@ -124,7 +135,47 @@ export default function DressingRoom() {
 
   /* ----- Upload handler ----- */
 
-  return (
+  
+  const generateOutfit = async (occasion) => {
+    if (!user) { toast.error("Sign in first"); return; }
+    setShowOutfitModal(false);
+    setOutfitGenerating(true);
+    setGeneratedOutfit(null);
+    const firstItem = items[0];
+    if (!firstItem || !firstItem.image_url) {
+      toast.error("Upload and analyze an outfit first");
+      setOutfitGenerating(false);
+      return;
+    }
+    try {
+      const resp = await fetch(firstItem.image_url);
+      const blob = await resp.blob();
+      const b64 = await new Promise((resolve) => {
+        const fr = new FileReader();
+        fr.onloadend = () => resolve((fr.result).split(",")[1]);
+        fr.readAsDataURL(blob);
+      });
+      const api = import.meta.env.VITE_PUBLIC_API_URL || "https://python--libyausmle.replit.app";
+      const genResp = await fetch(api + "/api/v1/dressing-room/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_b64: b64, occasion: occasion }),
+      });
+      if (!genResp.ok) throw new Error("Generation failed");
+      const data = await genResp.json();
+      if (data.success) {
+        setGeneratedOutfit(data);
+        toast.success("Outfit generated!");
+      } else {
+        toast.error(data.error || "Could not generate outfit");
+      }
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setOutfitGenerating(false);
+    }
+  };
+return (
     <AppLayout>
       <div className="p-4 md:p-8 mx-auto max-w-7xl space-y-8 overflow-x-hidden">
 
@@ -189,7 +240,55 @@ export default function DressingRoom() {
           </div>
         </div>
 
-        {/* ---- CONTENT ---- */}
+        
+              {/* ---- OUTFIT GENERATOR ---- */}
+              <div className="flex justify-center">
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    if (items.length === 0) { toast.error("Upload and analyze an outfit first"); return; }
+                    setShowOutfitModal(true);
+                  }}
+                  disabled={outfitGenerating}
+                  className="relative flex items-center gap-3 px-8 py-4 rounded-xl bg-gradient-to-r from-purple-500/20 via-purple-500/30 to-purple-500/20 border border-purple-500/30 text-purple-500 font-sans font-semibold text-base hover:from-purple-500/30 hover:to-purple-500/40 transition-all shadow-lg shadow-purple-500/10"
+                >
+                  {outfitGenerating ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-6 h-6" />
+                  )}
+                  <span>{outfitGenerating ? "Generating..." : "What should I wear today?"}</span>
+                </motion.button>
+              </div>
+
+              {/* Occasion Modal */}
+              <AnimatePresence>
+                {showOutfitModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+                    onClick={() => setShowOutfitModal(false)}>
+                    <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl"
+                      onClick={(e) => e.stopPropagation()}>
+                      <h3 className="font-display text-xl font-bold text-foreground mb-2">What should I wear today?</h3>
+                      <p className="text-sm text-muted-foreground mb-6">Choose an occasion and I will create the perfect outfit from your closet.</p>
+                      <div className="grid grid-cols-1 gap-3">
+                        {occasionOptions.map((opt) => (
+                          <motion.button key={opt.id} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                            onClick={() => generateOutfit(opt.label)}
+                            className="flex items-center gap-4 p-4 rounded-xl bg-muted/20 border border-border/50 hover:border-primary/30 hover:bg-primary/5 transition-all text-left">
+                            <span className="text-2xl">{opt.emoji === "tie" ? "tie" : opt.emoji === "run" ? "run" : opt.emoji === "case" ? "case" : opt.emoji === "smile" ? "smile" : "heart"}</span>
+                            <div>
+                              <p className="font-semibold text-foreground">{opt.label}</p>
+                            </div>
+                          </motion.button>
+                        ))}
+                      </div>
+                      <button className="w-full mt-4 text-center text-muted-foreground hover:text-foreground py-2" onClick={() => setShowOutfitModal(false)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </AnimatePresence>
+{/* ---- CONTENT ---- */}
         {loading ? (
           <div className="flex items-center justify-center py-32">
             <Loader2 className="w-10 h-10 animate-spin text-primary" />
@@ -381,7 +480,51 @@ export default function DressingRoom() {
           <ArrowUp className="w-5 h-5" />
         </motion.button>
 
-        {/* ---- FOOTER ---- */}
+        
+              {/* Generated Outfit Card */}
+              <AnimatePresence>
+                {generatedOutfit && (
+                  <div className="relative rounded-[1.5rem] border-[0.75px] border-border p-3">
+                    <GlowingEffect spread={60} glow proximity={64} inactiveZone={0.01} borderWidth={3} />
+                    <Card className="glass-card border-0 shadow-none">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2">
+                              <Sparkles className="w-5 h-5 text-primary" /> {generatedOutfit.outfit_name || "Styled Outfit"}
+                            </h3>
+                            <p className="text-sm text-muted-foreground mt-1">{generatedOutfit.outfit_description}</p>
+                          </div>
+                          <button className="p-2 hover:bg-muted/20 rounded-lg" onClick={() => setGeneratedOutfit(null)}>
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {generatedOutfit.image_url && (
+                          <div className="rounded-xl overflow-hidden border border-border/50 bg-muted/20 aspect-[3/4] max-w-sm mx-auto">
+                            <img src={generatedOutfit.image_url} alt="Generated outfit" className="w-full h-full object-cover"
+                              onError={(e) => { e.target.style.display = "none"; }} />
+                          </div>
+                        )}
+                        {generatedOutfit.selected_items && generatedOutfit.selected_items.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Selected Items</p>
+                            <div className="flex flex-wrap gap-2">
+                              {generatedOutfit.selected_items.map((item) => (
+                                <Badge key={item.id} variant="outline" className="bg-muted/20">{item.color} {item.type}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <button onClick={() => setShowOutfitModal(true)}
+                          className="w-full py-2.5 rounded-xl border border-primary/30 text-primary hover:bg-primary/10 transition-all text-sm font-medium">
+                          Try Another Occasion
+                        </button>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </AnimatePresence>
+{/* ---- FOOTER ---- */}
         <Footer />
       </div>
     </AppLayout>
@@ -391,6 +534,8 @@ export default function DressingRoom() {
 /* ------------------------------------------------------------------ */
 /*  Simple file input handler: opens picker, stores in sessionStorage  */
 /* ------------------------------------------------------------------ */
+
+
 function handleUploadClick() {
   const input = document.createElement("input");
   input.type = "file";
