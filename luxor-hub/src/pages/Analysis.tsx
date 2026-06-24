@@ -511,6 +511,48 @@ export default function Analysis() {
     show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: "easeOut" } },
   };
 
+  /* ---------- Pre-computed lists ---------- */
+  const itemsList = (data && data.items_detected && data.items_detected.length > 0)
+    ? data.items_detected.map((item, i) => (
+        <motion.li
+          key={i}
+          variants={itemAnim}
+          whileHover={{ scale: 1.02, x: 4 }}
+          className="flex items-center gap-3 p-3 rounded-xl bg-muted/20 border border-border/40 hover:bg-muted/30 transition-colors"
+        >
+          <div
+            className="w-5 h-5 rounded-full border-2 border-border/50 shadow-sm flex-shrink-0"
+            style={{ backgroundColor: (data.actual_colors && data.actual_colors[i]) ? data.actual_colors[i] : '#666' }}
+          />
+          <span className="text-sm text-foreground">{item}</span>
+        </motion.li>
+      ))
+    : (
+        <li className="flex items-center gap-3 p-3 rounded-xl bg-muted/10 border border-dashed border-border/30">
+          <div className="w-2 h-2 rounded-full bg-muted-foreground/20" />
+          <span className="text-sm text-muted-foreground/50 italic">Awaiting analysis...</span>
+        </li>
+      );
+
+  const strengthsList = (data && data.strengths && data.strengths.length > 0)
+    ? data.strengths.map((s, i) => (
+        <motion.li
+          key={i}
+          variants={itemAnim}
+          whileHover={{ scale: 1.02, x: 4 }}
+          className="flex items-center gap-3 p-3 rounded-xl border-l-2 border-green-500/40 bg-green-500/5"
+        >
+          <Star className="w-4 h-4 text-green-500 flex-shrink-0" />
+          <span className="text-sm text-foreground">{s}</span>
+        </motion.li>
+      ))
+    : (
+        <li className="flex items-center gap-3 p-3 rounded-xl border-l-2 border-muted/20 bg-muted/5">
+          <span className="text-sm text-muted-foreground/50 italic">Awaiting analysis...</span>
+        </li>
+      );
+
+
   return (
     <AppLayout>
       <div className="p-4 md:p-8 mx-auto max-w-7xl space-y-8 overflow-x-hidden">
@@ -632,25 +674,7 @@ export default function Analysis() {
                           animate="show"
                           className="space-y-2"
                         >
-                          {(data.items_detected || []).length > 0 ? (data.items_detected || []).map((item, i) =>
-                            <motion.li
-                              key={i}
-                              variants={itemAnim}
-                              whileHover={{ scale: 1.02, x: 4 }}
-                              className="flex items-center gap-3 p-3 rounded-xl bg-muted/20 border border-border/40 hover:bg-muted/30 transition-colors"
-                            >
-                              <div
-                                className="w-5 h-5 rounded-full border-2 border-border/50 shadow-sm flex-shrink-0"
-                                style={{ backgroundColor: (data.actual_colors && data.actual_colors[i]) ? data.actual_colors[i] : '#666' }}
-                              />
-                              <span className="text-sm text-foreground">{item}</span>
-                            </motion.li>
-                          )) : (
-                            <li className="flex items-center gap-3 p-3 rounded-xl bg-muted/10 border border-dashed border-border/30">
-                              <div className="w-2 h-2 rounded-full bg-muted-foreground/20" />
-                              <span className="text-sm text-muted-foreground/50 italic">Awaiting analysis...</span>
-                            </li>
-                          )}
+                          {itemsList}
                         </motion.ul>
                       </CardContent>
                     </Card>
@@ -672,23 +696,7 @@ export default function Analysis() {
                           animate="show"
                           className="space-y-2"
                         >
-                          {(data.strengths || []).length > 0 ? (data.strengths || []).map((s, i) => (
-                            <motion.li
-                              key={i}
-                              variants={itemAnim}
-                              whileHover={{ scale: 1.02, x: 4 }}
-                              className="flex items-center gap-3 p-3 rounded-xl border-l-2 border-green-500/40 bg-green-500/5"
-                            >
-                              <Star className="w-4 h-4 text-green-500 flex-shrink-0" />
-                              <span className="text-sm text-foreground">{s}</span>
-                            </motion.li>
-                          )) : (
-                            <li className="flex items-center gap-3 p-3 rounded-xl border-l-2 border-muted/20 bg-muted/5">
-                              <Star className="w-4 h-4 text-muted-foreground/20 flex-shrink-0" />
-                              <span className="text-sm text-muted-foreground/50 italic">Awaiting analysis...</span>
-                            </li>
-                          )}
-                        </motion.ul>
+                                                    {strengthsList}                       </motion.ul>
                       </CardContent>
                     </Card>
                   </motion.div>
