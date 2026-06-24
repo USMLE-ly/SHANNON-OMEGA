@@ -1,3 +1,3 @@
 [run]
-build = "cd luxor-hub && npm install && npm run build"
-dev = "cd luxor-hub && npm install && npm run dev"
+build = "npm --prefix luxor-hub install && npm --prefix luxor-hub run build"
+dev = "npm --prefix luxor-hub install && npm --prefix luxor-hub run dev"
