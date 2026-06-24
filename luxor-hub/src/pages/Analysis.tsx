@@ -386,10 +386,8 @@ export default function Analysis() {
 
       // Retry loop — Cipher Vision can be slow; retry with backoff instead of giving up
       let fnData: any = null;
-      let lastError = '';
       for (let attempt = 0; attempt < 3; attempt++) {
         if (attempt > 0) {
-          // Wait 2s, 4s before retrying
           await new Promise(r => setTimeout(r, 2000 * attempt));
         }
         const response = await fetch(apiUrl + '/api/v1/analyze-outfit', {
@@ -401,11 +399,15 @@ export default function Analysis() {
         fnData = await response.json();
         if (!fnData || !fnData.success) throw new Error('Analysis failed');
         if (fnData.source === 'cipher_vision') break; // success — exit retry loop
-        lastError = 'Cipher Vision unavailable, try again later';
-        // source === 'local' — retry
+        // source is 'fallback' (from Replit) or 'local' — retry
       }
+      // All retries exhausted — silently reset to upload state, no toast
       if (!fnData || fnData.source !== 'cipher_vision') {
-        throw new Error(lastError || 'Cipher Vision unavailable, try again later');
+        setData(null);
+        setImagePreview(null);
+        setImageFile(null);
+        setSavedId(null);
+        return;
       }
 
       // Map the Fable 5 response to our UI shape - NO fallback dummies
