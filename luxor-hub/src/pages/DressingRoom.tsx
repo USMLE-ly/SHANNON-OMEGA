@@ -155,7 +155,7 @@ const fetchItems = async () => {
         fr.onloadend = () => resolve((fr.result).split(",")[1]);
         fr.readAsDataURL(blob);
       });
-      const api = import.meta.env.VITE_PUBLIC_API_URL || "https://python--libyausmle.replit.app";
+      const api = import.meta.env.VITE_PUBLIC_API_URL || "https://luxor.ly";
       const genResp = await fetch(api + "/api/v1/dressing-room/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
