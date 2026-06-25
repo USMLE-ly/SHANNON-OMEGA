@@ -1,4 +1,4 @@
-run = "gunicorn main:app --bind 0.0.0.0:5000 --timeout 120 --worker-tmp-dir /dev/shm --log-level warning"
+run = "gunicorn main:app --bind 0.0.0.0:$PORT"
 modules = ["python-3.11"]
 
 [agent]
@@ -6,7 +6,7 @@ expertMode = true
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "main:app", "--bind", "0.0.0.0:5000", "--reuse-port", "--preload", "--timeout=120", "--worker-tmp-dir", "/dev/shm", "--log-level", "warning"]
+run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "--preload", "--timeout=120", "main:app"]
 
 [nix]
 packages = ["glibcLocales", "libGL", "libGLU"]
@@ -33,13 +33,11 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --preload --timeout=120 --worker-tmp-dir /dev/shm --log-level warning main:app"
+args = "gunicorn --bind 0.0.0.0:$PORT --reuse-port --preload --timeout=120 main:app"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
-
-[userenv]
 
 [userenv.shared]
 QDRANT_URL = "https://1dfdf466-d06a-40b9-bfa4-aff0d5fd8942.us-east-1-1.aws.cloud.qdrant.io"
