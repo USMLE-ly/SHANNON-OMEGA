@@ -610,7 +610,7 @@ export default function Analysis() {
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="relative">
           <div className="absolute -top-4 -left-4 w-32 h-32 bg-primary/10 rounded-full blur-[60px]" />
           <h1 className="font-display text-4xl font-bold text-foreground relative">
-            See What the World <span className="gold-text">Sees</span>
+            <!-- cb2 -->See What the World <span className="gold-text">Sees</span>
           </h1>
           <p className="text-muted-foreground mt-2 text-lg">Upload your outfit. The AI scores it, finds the strengths, and tells you exactly what to fix.</p>
         </motion.div>
