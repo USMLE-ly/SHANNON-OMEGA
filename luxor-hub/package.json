@@ -5,13 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "mkdir -p ../dist && cp -r dist/. ../dist/ || true",
+    "build": "echo 'prebuilt dist ready at luxor-hub/dist/'",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "node node_modules/esbuild/install.js"
+    "postinstall": "echo 'skip esbuild install'"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
