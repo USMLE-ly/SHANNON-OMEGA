@@ -601,6 +601,11 @@ export default function Analysis() {
   };
 
   /* ---------- Pre-computed lists ---------- */
+
+  return (
+    <AppLayout>
+      <div className="p-4 md:p-8 mx-auto max-w-7xl space-y-8 overflow-x-hidden">
+
         {/* ---------- HEADER ---------- */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="relative">
           <div className="absolute -top-4 -left-4 w-32 h-32 bg-primary/10 rounded-full blur-[60px]" />
