@@ -1,3 +1,3 @@
 [run]
-build = "echo 'prebuilt dist ready in luxor-hub/dist/'"
+build = "cp -r luxor-hub/dist/. dist/ && echo 'dist ready'"
 dev = "cd luxor-hub && npm run dev"
