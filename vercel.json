@@ -5,10 +5,12 @@
       "use": "@vercel/python"
     },
     {
-      "src": "package.json",
+      "src": "luxor-hub/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "installCommand": "cd luxor-hub && npm install",
+        "buildCommand": "cd luxor-hub && npm run build",
+        "outputDirectory": "dist"
       }
     }
   ],
