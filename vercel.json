@@ -1,12 +1,8 @@
 {
   "builds": [
     {
-      "src": "main.py",
-      "use": "@vercel/python",
-      "config": {
-        "runtime": "python3.12",
-        "maxLambdaSize": "15MB"
-      }
+      "src": "api/**/*.py",
+      "use": "@vercel/python"
     },
     {
       "src": "luxor-hub/package.json",
@@ -19,6 +15,6 @@
     }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/main.py" }
+    { "source": "/api/(.*)", "destination": "/api/index.py" }
   ]
 }
