@@ -135,7 +135,7 @@ function DressingRoom() {
         fr.onloadend = () => resolve(fr.result.split(",")[1]);
         fr.readAsDataURL(blob);
       });
-      const api = "https://python--libyausmle.replit.app";
+      const api = "https://luxor.ly";
       const genResp = await fetch(api + "/api/v1/dressing-room/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

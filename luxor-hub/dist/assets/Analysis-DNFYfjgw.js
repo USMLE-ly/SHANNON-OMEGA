@@ -146,7 +146,7 @@ function InteractiveStylistQuiz({ imagePreview, styleName, actualColors }) {
       }
       const newHistory = [...chatHistory, { role: "user", text: answer }];
       setChatHistory(newHistory);
-      const api = "https://python--libyausmle.replit.app";
+      const api = "https://luxor.ly";
       const resp = await fetch(api + "/api/v1/stylist-explore", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -359,7 +359,7 @@ function Analysis() {
     setLoading(true);
     try {
       const b64 = await compressImage(file);
-      const apiUrl = "https://python--libyausmle.replit.app";
+      const apiUrl = "https://luxor.ly";
       let fnData = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         if (attempt > 0) {
