@@ -8,3 +8,6 @@ __pycache__
 closet_items.json
 knowledge_base
 media-tools
+.venv
+uv.lock
+dist_built
