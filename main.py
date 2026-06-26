@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Luxor Pro Stylist — Fashion Analysis & Interactive Ecosystem
 # Groq Vision · Stylist Quiz · Closet Management · Outfit Generator
-# SSL Ready · Vercel Compatible
+# Vercel Blob · Qdrant Storage · Serverless Ready
 import base64
 import io
 import json
@@ -21,6 +21,11 @@ from flask_cors import CORS
 from PIL import Image
 from dotenv import load_dotenv
 
+# Qdrant + Vercel Blob
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as qdrant_models
+from vercel_blob import put as blob_put
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
@@ -35,22 +40,137 @@ _log = logging.getLogger("luxor.omega")
 app = Flask(__name__)
 CORS(app, origins=["*"])
 
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview")
 GROQ_TEXT_MODEL = os.getenv("GROQ_TEXT_MODEL", "llama-3.1-8b-instant")
 
 CIPHER_MAX_TOKENS = int(os.getenv("CIPHER_MAX_TOKENS", "1200"))
 PORT = int(os.getenv("PORT", "5000"))
-_log.info("Binding to port: %d", PORT)
 ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "90"))
+
+# Vercel Blob
+BLOB_READ_WRITE_TOKEN = os.getenv("BLOB_READ_WRITE_TOKEN", "")
+
+# Qdrant
+QDRANT_URL = os.getenv("QDRANT_URL", "")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
 _log.info("Groq key loaded: %s", bool(GROQ_API_KEY))
 _log.info("Vision model: %s", GROQ_VISION_MODEL)
 _log.info("Text model: %s", GROQ_TEXT_MODEL)
+_log.info("Blob token: %s", bool(BLOB_READ_WRITE_TOKEN))
+_log.info("Qdrant: %s", bool(QDRANT_URL and QDRANT_API_KEY))
 
-CLOSET_FILE = os.path.join(BASE_DIR, "closet_items.json")
-_executor = ThreadPoolExecutor(max_workers=2)
+# ---------------------------------------------------------------------------
+# Qdrant Closet Client
+# ---------------------------------------------------------------------------
+_qdrant_closet = None
+_CLOSET_COLLECTION = "luxor_closet"
+
+def _get_qdrant_closet() -> Optional[QdrantClient]:
+    global _qdrant_closet
+    if _qdrant_closet is None and QDRANT_URL and QDRANT_API_KEY:
+        try:
+            _qdrant_closet = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=10)
+            _ensure_closet_collection(_qdrant_closet)
+            _log.info("[QDRANT] Closet client ready")
+        except Exception as exc:
+            _log.warning("[QDRANT] Init failed: %s", exc)
+            _qdrant_closet = None
+    return _qdrant_closet
+
+def _ensure_closet_collection(client: QdrantClient):
+    try:
+        collections = client.get_collections()
+        names = [c.name for c in collections.collections]
+        if _CLOSET_COLLECTION not in names:
+            client.create_collection(
+                collection_name=_CLOSET_COLLECTION,
+                vectors_config=qdrant_models.VectorParams(size=4, distance=qdrant_models.Distance.COSINE),
+            )
+            _log.info("[QDRANT] Created collection '%s'", _CLOSET_COLLECTION)
+    except Exception as exc:
+        _log.warning("[QDRANT] Ensure collection: %s", exc)
+
+def qdrant_get_all_items() -> List[Dict[str, Any]]:
+    client = _get_qdrant_closet()
+    if not client:
+        return []
+    try:
+        result = client.scroll(
+            collection_name=_CLOSET_COLLECTION,
+            limit=1000,
+            with_payload=True,
+        )
+        points = result[0] if isinstance(result, tuple) else result
+        return [dict(p.payload) for p in points if p.payload]
+    except Exception as exc:
+        _log.warning("[QDRANT] Scroll error: %s", exc)
+        return []
+
+def qdrant_upsert_item(item: Dict[str, Any]) -> bool:
+    client = _get_qdrant_closet()
+    if not client:
+        return False
+    try:
+        point_id = item.get("id", str(uuid.uuid4())[:8])
+        client.upsert(
+            collection_name=_CLOSET_COLLECTION,
+            points=[qdrant_models.PointStruct(
+                id=point_id,
+                vector=[0.0, 0.0, 0.0, 0.0],
+                payload=item,
+            )]
+        )
+        return True
+    except Exception as exc:
+        _log.warning("[QDRANT] Upsert error: %s", exc)
+        return False
+
+def qdrant_delete_item(item_id: str) -> bool:
+    client = _get_qdrant_closet()
+    if not client:
+        return False
+    try:
+        client.delete(
+            collection_name=_CLOSET_COLLECTION,
+            points_selector=qdrant_models.Filter(
+                must=[qdrant_models.FieldCondition(
+                    key="id", match=qdrant_models.MatchValue(value=item_id)
+                )]
+            ),
+        )
+        return True
+    except Exception as exc:
+        _log.warning("[QDRANT] Delete error: %s", exc)
+        return False
+
+def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
+    client = _get_qdrant_closet()
+    if not client:
+        return None
+    try:
+        result = client.scroll(
+            collection_name=_CLOSET_COLLECTION,
+            limit=1,
+            with_payload=True,
+            scroll_filter=qdrant_models.Filter(
+                must=[qdrant_models.FieldCondition(
+                    key="id", match=qdrant_models.MatchValue(value=item_id)
+                )]
+            ),
+        )
+        points = result[0] if isinstance(result, tuple) else result
+        if points and points[0].payload:
+            return dict(points[0].payload)
+        return None
+    except Exception as exc:
+        _log.warning("[QDRANT] Get error: %s", exc)
+        return None
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -88,12 +208,12 @@ After Step 3, generate a unique outfit description. Return ONLY JSON:
 
 Use the user's previous answers and style context for uniqueness."""
 
-CLOSET_PROMPT = """You are FASHION-OMEGA. Based on the user's style analysis and their closet items, pick the BEST combination for the given occasion.
-
-Return ONLY JSON:
-- `selected_ids`: array of item IDs (1 top, 1 bottom, 1 pair shoes, optionally 1 jacket)
-- `outfit_description`: 15-word description
-- `outfit_name`: 2-3 word name"""
+CLOSET_PROMPT = """You are a personal stylist. Analyze the user's closet provided below. Pick 2 distinct, complete outfits that perfectly match the user's request: {occasion} occasion, {weather} weather, and {color_palette} color palette. Each outfit must include 1 Top, 1 Bottom, 1 Pair of Shoes, and optionally 1 Accessory or Dress.
+Return ONLY a JSON array of 2 objects in this exact format:
+[
+  { "outfit_name": "Sporty Street Look", "item_ids": ["id1", "id2", "id3"], "reason": "why this works" },
+  { "outfit_name": "Summer Lounge Vibe", "item_ids": ["id4", "id5", "id6"], "reason": "why this works" }
+]"""
 
 REQUIRED_KEYS = [
     "gender", "top_type", "bottom_type", "footwear", "accessories",
@@ -173,23 +293,23 @@ def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temp
     return None
 
 # ---------------------------------------------------------------------------
-# Closet file helpers
+# Vercel Blob helper
 # ---------------------------------------------------------------------------
-def load_closet() -> List[Dict[str, Any]]:
+def upload_image_to_blob(image_b64: str, prefix: str = "closet") -> Optional[str]:
+    if not BLOB_READ_WRITE_TOKEN:
+        _log.warning("[BLOB] No token configured")
+        return None
     try:
-        if os.path.exists(CLOSET_FILE):
-            with open(CLOSET_FILE, "r") as f:
-                return json.load(f)
+        raw = base64.b64decode(image_b64)
+        ext = "jpg"
+        path = f"{prefix}/{uuid.uuid4().hex[:16]}.{ext}"
+        resp = blob_put(path, raw, options={"addRandomSuffix": "false"})
+        if isinstance(resp, dict):
+            return resp.get("url") or resp.get("pathname") or None
+        return None
     except Exception as exc:
-        _log.warning("[CLOSET] Load error: %s", exc)
-    return []
-
-def save_closet(items: List[Dict[str, Any]]):
-    try:
-        with open(CLOSET_FILE, "w") as f:
-            json.dump(items, f, indent=2)
-    except Exception as exc:
-        _log.error("[CLOSET] Save error: %s", exc)
+        _log.error("[BLOB] Upload error: %s", exc)
+        return None
 
 # ---------------------------------------------------------------------------
 # Fashion Decision
@@ -223,6 +343,8 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     if len(strengths) < 3:
         strengths = [f"Choice of {result.get('top_type', 'top')}", f"Coordination with {result.get('bottom_type', 'bottom')}", "Overall cohesive styling"]
     return {"success": True, "source": result.get("source", "unknown"), "style_name": result.get("style_name", ""), "style_score": result.get("style_score"), "gender": result.get("gender", ""), "actual_colors": actual_colors, "items_detected": items_detected, "strengths": strengths, "audit": result.get("audit", ""), "tweak_plan": result.get("tweak_plan", ""), "generation_prompt": result.get("generation_prompt", "")}
+
+_executor = ThreadPoolExecutor(max_workers=2)
 
 # ===========================================================================
 # ENDPOINTS
@@ -263,7 +385,6 @@ def stylist_explore():
     if not image_b64:
         return jsonify({"error": "Missing image_b64"}), 400
 
-    # Get style context
     analysis = get_fashion_decision(image_b64)
     style_context = f"User style: {analysis.get('style_name', 'Unknown')}. "
     items = [analysis.get(k, "") for k in ["top_type", "bottom_type", "footwear", "accessories"] if analysis.get(k)]
@@ -298,91 +419,6 @@ def stylist_explore():
     return jsonify({"next_question": next_q, "options": options, "generated_prompt": "", "outfit_name": ""})
 
 # ---------------------------------------------------------------------------
-# Closet
-# ---------------------------------------------------------------------------
-@app.route("/api/v1/closet/add-item", methods=["POST", "OPTIONS"])
-def closet_add():
-    if request.method == "OPTIONS":
-        return "", 204
-    data = request.get_json(silent=True) or {}
-    item_type = data.get("type", "Other")
-    color = data.get("color", "")
-    category = data.get("category", "")
-    image_b64 = data.get("image_b64", "")
-    label = data.get("label", "")
-    if not label and not image_b64:
-        return jsonify({"error": "Need label or image"}), 400
-    items = load_closet()
-    new_item = {"id": str(uuid.uuid4())[:8], "type": item_type, "color": color, "category": category, "label": label, "has_image": bool(image_b64), "created_at": datetime.now(timezone.utc).isoformat()}
-    items.append(new_item)
-    save_closet(items)
-    return jsonify({"success": True, "item": new_item})
-
-@app.route("/api/v1/closet/list-items", methods=["GET", "OPTIONS"])
-def closet_list():
-    if request.method == "OPTIONS":
-        return "", 204
-    items = load_closet()
-    safe = [{k: v for k, v in i.items() if k != "image_b64"} for i in items]
-    return jsonify({"success": True, "items": safe})
-
-@app.route("/api/v1/closet/delete-item", methods=["POST", "OPTIONS"])
-def closet_delete():
-    if request.method == "OPTIONS":
-        return "", 204
-    data = request.get_json(silent=True) or {}
-    item_id = data.get("id", "")
-    if not item_id:
-        return jsonify({"error": "Missing id"}), 400
-    items = [i for i in load_closet() if i.get("id") != item_id]
-    save_closet(items)
-    return jsonify({"success": True})
-
-# ---------------------------------------------------------------------------
-# Dressing Room Generator
-# ---------------------------------------------------------------------------
-@app.route("/api/v1/dressing-room/generate", methods=["POST", "OPTIONS"])
-def dressing_generate():
-    if request.method == "OPTIONS":
-        return "", 204
-    data = request.get_json(silent=True) or {}
-    image_b64 = data.get("image_b64")
-    occasion = data.get("occasion", "Casual")
-    if not image_b64:
-        return jsonify({"error": "Missing image_b64"}), 400
-
-    analysis = get_fashion_decision(image_b64)
-    style_context = f"User style: {analysis.get('style_name', 'Unknown')}. "
-    items = [analysis.get(k, "") for k in ["top_type", "bottom_type", "footwear", "accessories"] if analysis.get(k)]
-    if items:
-        style_context += f"Their outfit includes: {', '.join(items)}."
-
-    closet_items = load_closet()
-    if not closet_items:
-        return jsonify({"success": False, "error": "Closet is empty! Add items first."})
-
-    closet_summary = "\n".join([f"- {i.get('label', 'Unknown')} ({i.get('color', '')} {i.get('type', '')}) [ID: {i.get('id', '')}]" for i in closet_items])
-    messages = [
-        {"role": "user", "content": f"Style: {style_context}"},
-        {"role": "user", "content": f"Occasion: {occasion}"},
-        {"role": "user", "content": f"Closet:\n{closet_summary}"},
-    ]
-    result = call_groq_text(messages, CLOSET_PROMPT, temperature=0.7)
-    if not result:
-        return jsonify({"success": False, "error": "Could not generate outfit"})
-
-    selected_ids = result.get("selected_ids", [])
-    selected = [i for i in closet_items if i.get("id") in selected_ids]
-    desc = result.get("outfit_description", "A stylish outfit")
-    name = result.get("outfit_name", "Styled Look")
-    seed = int(time.time() * 1000) % 10000
-    safe = urllib.parse.quote(f"Full-body editorial photograph of a person wearing {desc}, fashionable, well-coordinated, style: {name}")
-    img_url = f"https://image.pollinations.ai/prompt/{safe}?width=1024&height=1024&nologin=true&seed={seed}"
-    return jsonify({"success": True, "outfit_name": name, "outfit_description": desc, "selected_items": selected, "selected_ids": selected_ids, "image_url": img_url})
-
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # Stylist Generate (Pollinations-only, no Groq dependency)
 # ---------------------------------------------------------------------------
 @app.route("/api/v1/stylist-generate", methods=["POST", "OPTIONS"])
@@ -393,18 +429,144 @@ def stylist_generate():
     vibe = data.get("vibe", "Casual")
     weather = data.get("weather", "Mild")
     color = data.get("color", "Neutrals")
-    
+
     prompt = f"High fashion editorial photograph of a woman wearing a {vibe} style outfit, designed for {weather} weather, using a {color} color palette. Photorealistic, soft lighting, stylish setting."
     safe = urllib.parse.quote(prompt)
     seed = int(time.time() * 1000)
     image_url = f"https://image.pollinations.ai/prompt/{safe}?width=1024&height=1024&nologin=true&seed={seed}"
-    
+
     return jsonify({
         "success": True,
         "image_url": image_url,
         "description": f"A {color} {vibe} outfit for {weather} weather."
     })
 
+# ---------------------------------------------------------------------------
+# Closet (Vercel Blob + Qdrant)
+# ---------------------------------------------------------------------------
+@app.route("/api/v1/closet/add-item", methods=["POST", "OPTIONS"])
+def closet_add():
+    if request.method == "OPTIONS":
+        return "", 204
+    data = request.get_json(silent=True) or {}
+    item_type = data.get("type", "other")
+    label = data.get("label", "")
+    color = data.get("color", "")
+    category = data.get("category", "")
+    image_b64 = data.get("image_b64", "")
+
+    if not label and not image_b64:
+        return jsonify({"error": "Need label or image"}), 400
+
+    # Upload image to Vercel Blob
+    image_url = None
+    if image_b64:
+        image_url = upload_image_to_blob(image_b64)
+
+    # Build item
+    item_id = str(uuid.uuid4())[:8]
+    item = {
+        "id": item_id,
+        "type": item_type,
+        "label": label,
+        "color": color,
+        "category": category,
+        "image_url": image_url or "",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Store in Qdrant
+    ok = qdrant_upsert_item(item)
+    if not ok:
+        return jsonify({"error": "Storage unavailable"}), 503
+
+    return jsonify({"success": True, "item": item})
+
+@app.route("/api/v1/closet/list-items", methods=["GET", "OPTIONS"])
+def closet_list():
+    if request.method == "OPTIONS":
+        return "", 204
+    items = qdrant_get_all_items()
+    return jsonify({"success": True, "items": items})
+
+@app.route("/api/v1/closet/delete-item", methods=["POST", "OPTIONS"])
+def closet_delete():
+    if request.method == "OPTIONS":
+        return "", 204
+    data = request.get_json(silent=True) or {}
+    item_id = data.get("id", "")
+    if not item_id:
+        return jsonify({"error": "Missing id"}), 400
+    ok = qdrant_delete_item(item_id)
+    return jsonify({"success": ok})
+
+# ---------------------------------------------------------------------------
+# Dressing Room Generator (Groq Text picks from Qdrant closet)
+# ---------------------------------------------------------------------------
+@app.route("/api/v1/dressing-room/generate", methods=["POST", "OPTIONS"])
+def dressing_generate():
+    if request.method == "OPTIONS":
+        return "", 204
+    data = request.get_json(silent=True) or {}
+    occasion = data.get("occasion", "Casual")
+    weather = data.get("weather", "Mild")
+    color_palette = data.get("color_palette", "Neutrals")
+
+    # Get all closet items from Qdrant
+    closet_items = qdrant_get_all_items()
+    if not closet_items:
+        return jsonify({"success": False, "error": "Closet is empty! Add items first."})
+
+    # Build closet summary for Groq
+    closet_summary = "\n".join([
+        f"- {i.get('label', 'Unknown')} ({i.get('color', '')} {i.get('type', '')}) [ID: {i.get('id', '')}]"
+        for i in closet_items
+    ])
+
+    # Build prompt
+    prompt = CLOSET_PROMPT.format(occasion=occasion, weather=weather, color_palette=color_palette)
+    messages = [
+        {"role": "user", "content": f"Here is the user's closet:\n{closet_summary}"},
+        {"role": "user", "content": prompt},
+    ]
+
+    # Call Groq Text
+    result = call_groq_text(messages, temperature=0.7)
+    if not result:
+        return jsonify({"success": False, "error": "Could not generate outfit"})
+
+    # result should be a list of 2 outfits
+    outfit_options_raw = result if isinstance(result, list) else result.get("outfits", [])
+    if not outfit_options_raw or len(outfit_options_raw) == 0:
+        return jsonify({"success": False, "error": "Could not compose outfits"})
+
+    # Look up items by ID for each outfit
+    outfit_options = []
+    for opt in outfit_options_raw[:2]:
+        item_ids = opt.get("item_ids", [])
+        items = []
+        for iid in item_ids:
+            item = qdrant_get_item(iid)
+            if item:
+                items.append({
+                    "id": item.get("id", ""),
+                    "label": item.get("label", ""),
+                    "type": item.get("type", ""),
+                    "color": item.get("color", ""),
+                    "image_url": item.get("image_url", ""),
+                })
+        outfit_options.append({
+            "outfit_name": opt.get("outfit_name", "Styled Look"),
+            "reason": opt.get("reason", ""),
+            "items": items,
+        })
+
+    return jsonify({
+        "success": True,
+        "outfit_options": outfit_options,
+    })
+
+# ---------------------------------------------------------------------------
 # Debug & Health
 # ---------------------------------------------------------------------------
 @app.route("/debug/analyze", methods=["POST"])
@@ -425,17 +587,25 @@ def debug_analyze():
 @app.route("/", methods=["GET"])
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "service": "luxor-fashion-omega-v5", "groq_configured": bool(GROQ_API_KEY), "closet_items": len(load_closet())})
+    closet_count = len(qdrant_get_all_items())
+    return jsonify({
+        "status": "ok",
+        "service": "luxor-fashion-omega-v5",
+        "groq_configured": bool(GROQ_API_KEY),
+        "blob_configured": bool(BLOB_READ_WRITE_TOKEN),
+        "qdrant_configured": bool(QDRANT_URL and QDRANT_API_KEY),
+        "closet_items": closet_count,
+    })
 
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    if not os.path.exists(CLOSET_FILE):
-        save_closet([])
     _log.info("=" * 54)
-    _log.info("  LUXOR FASHION OMEGA v5")
+    _log.info("  LUXOR FASHION OMEGA v6 (Qdrant + Blob)")
     _log.info("  Port: %d", PORT)
     _log.info("  Groq: %s", "ENABLED" if GROQ_API_KEY else "DISABLED")
+    _log.info("  Blob: %s", "ENABLED" if BLOB_READ_WRITE_TOKEN else "DISABLED")
+    _log.info("  Qdrant: %s", "ENABLED" if QDRANT_URL and QDRANT_API_KEY else "DISABLED")
     _log.info("=" * 54)
     app.run(host="0.0.0.0", port=PORT, debug=False)

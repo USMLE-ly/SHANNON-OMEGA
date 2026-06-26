@@ -12,7 +12,7 @@ import { GlowingEffect } from "@/components/ui/glowing-effect";
 import {
   Upload, Star, Clock, Loader2, Sparkles, Trash2, Shirt,
   Instagram, Twitter, ExternalLink, Grid3X3, List, Search,
-  ArrowUp
+  ArrowUp, X, ShoppingBag, Sun, Cloud, Palette
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -27,76 +27,77 @@ interface GalleryItem {
   created_at: string;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Framer variants                                                    */
-/* ------------------------------------------------------------------ */
-const containerVariants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.07 } },
-};
-const cardVariants = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
-};
+interface ClosetItem {
+  id: string;
+  label: string;
+  type: string;
+  color: string;
+  image_url: string;
+}
 
-/* ------------------------------------------------------------------ */
-/*  Footer                                                             */
-/* ------------------------------------------------------------------ */
-function Footer() {
-  return (
-    <footer className="relative mt-16 mb-6">
-      <div className="absolute inset-0 -top-6 h-px bg-gradient-to-r from-transparent via-border to-transparent backdrop-blur-sm" />
-      <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
-        <p className="text-xs text-muted-foreground/60">
-          © 2026 LUXOR® — AI Fashion Style
-        </p>
-        <div className="flex items-center gap-4">
-          {[
-            { icon: Instagram, href: "#" },
-            { icon: Twitter, href: "#" },
-            { icon: ExternalLink, href: "#" },
-          ].map(({ icon: Icon, href }, i) => (
-            <motion.a
-              key={i}
-              href={href}
-              whileHover={{ scale: 1.15, y: -2 }}
-              whileTap={{ scale: 0.9 }}
-              className="w-8 h-8 rounded-full bg-muted/30 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-            >
-              <Icon className="w-4 h-4" />
-            </motion.a>
-          ))}
-        </div>
-      </div>
-    </footer>
-  );
+interface OutfitOption {
+  outfit_name: string;
+  reason: string;
+  items: ClosetItem[];
+}
+
+interface OutfitResponse {
+  success: boolean;
+  outfit_options: OutfitOption[];
+  error?: string;
 }
 
 /* ------------------------------------------------------------------ */
-/*  Main Page                                                          */
+/*  Constants                                                          */
 /* ------------------------------------------------------------------ */
-export default function DressingRoom() {
+const OCCASIONS = [
+  { id: "casual", label: "Casual", emoji: "👕" },
+  { id: "business", label: "Business", emoji: "💼" },
+  { id: "party", label: "Party", emoji: "🎉" },
+  { id: "date-night", label: "Date Night", emoji: "🌹" },
+  { id: "sport", label: "Sport", emoji: "🏃" },
+];
+
+const WEATHERS = [
+  { id: "hot", label: "Hot", emoji: "☀️" },
+  { id: "mild", label: "Mild", emoji: "🌤" },
+  { id: "cold", label: "Cold", emoji: "❄️" },
+];
+
+const PALETTES = [
+  { id: "neutrals", label: "Neutrals", emoji: "🤎" },
+  { id: "brights", label: "Brights", emoji: "🌈" },
+  { id: "pastels", label: "Pastels", emoji: "🌸" },
+  { id: "dark", label: "Dark", emoji: "🖤" },
+];
+
+/* ------------------------------------------------------------------ */
+/*  Component                                                          */
+/* ------------------------------------------------------------------ */
+export default function DressingRoomPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [deleting, setDeleting] = useState<string | null>(null);
   const [uploadHover, setUploadHover] = useState(false);
 
-  
+  // Outfit generation state
   const [showOutfitModal, setShowOutfitModal] = useState(false);
   const [outfitGenerating, setOutfitGenerating] = useState(false);
-  const [generatedOutfit, setGeneratedOutfit] = useState(null);
-  const occasionOptions = [
-    { id: "night-event", label: "Night Event", emoji: "tie" },
-    { id: "sport", label: "Sport", emoji: "run" },
-    { id: "work", label: "Work", emoji: "case" },
-    { id: "casual", label: "Casual", emoji: "smile" },
-    { id: "date-night", label: "Date Night", emoji: "heart" },
-  ];
-const fetchItems = async () => {
+  const [generatedOutfits, setGeneratedOutfits] = useState<OutfitOption[]>([]);
+
+  // 3-step quiz state
+  const [step, setStep] = useState(0);
+  const [selectedOccasion, setSelectedOccasion] = useState("");
+  const [selectedWeather, setSelectedWeather] = useState("");
+  const [selectedPalette, setSelectedPalette] = useState("");
+
+  /* ---------- Fetch gallery items ---------- */
+  const fetchItems = async () => {
     if (!user) return;
     setLoading(true);
     const { data } = await supabase
@@ -133,49 +134,78 @@ const fetchItems = async () => {
   const scoreColor = (s: number) =>
     s >= 80 ? "text-green-500" : s >= 60 ? "text-yellow-500" : "text-red-400";
 
-  /* ----- Upload handler ----- */
+  /* ---------- Generate Outfit (new) ---------- */
+  const openGenerateModal = () => {
+    setStep(0);
+    setSelectedOccasion("");
+    setSelectedWeather("");
+    setSelectedPalette("");
+    setShowOutfitModal(true);
+  };
 
-  
-  const generateOutfit = async (occasion) => {
-    if (!user) { toast.error("Sign in first"); return; }
+  const handleStepNext = () => {
+    if (step === 0 && !selectedOccasion) { toast.error("Pick an occasion"); return; }
+    if (step === 1 && !selectedWeather) { toast.error("Pick a weather"); return; }
+    if (step === 2 && !selectedPalette) { toast.error("Pick a color palette"); return; }
+    if (step < 2) {
+      setStep(step + 1);
+    } else {
+      generateOutfit();
+    }
+  };
+
+  const generateOutfit = async () => {
     setShowOutfitModal(false);
     setOutfitGenerating(true);
-    setGeneratedOutfit(null);
-    const firstItem = items[0];
-    if (!firstItem || !firstItem.image_url) {
-      toast.error("Upload and analyze an outfit first");
-      setOutfitGenerating(false);
-      return;
-    }
+    setGeneratedOutfits([]);
+
     try {
-      const resp = await fetch(firstItem.image_url);
-      const blob = await resp.blob();
-      const b64 = await new Promise((resolve) => {
-        const fr = new FileReader();
-        fr.onloadend = () => resolve((fr.result).split(",")[1]);
-        fr.readAsDataURL(blob);
-      });
       const api = import.meta.env.VITE_PUBLIC_API_URL || "https://python--libyausmle.replit.app";
       const genResp = await fetch(api + "/api/v1/dressing-room/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_b64: b64, occasion: occasion }),
+        body: JSON.stringify({
+          occasion: selectedOccasion,
+          weather: selectedWeather,
+          color_palette: selectedPalette,
+        }),
       });
       if (!genResp.ok) throw new Error("Generation failed");
-      const data = await genResp.json();
-      if (data.success) {
-        setGeneratedOutfit(data);
-        toast.success("Outfit generated!");
+      const data: OutfitResponse = await genResp.json();
+      if (data.success && data.outfit_options && data.outfit_options.length > 0) {
+        setGeneratedOutfits(data.outfit_options);
+        toast.success("Outfits generated!");
       } else {
-        toast.error(data.error || "Could not generate outfit");
+        toast.error(data.error || "Could not generate outfits");
       }
-    } catch (e) {
-      toast.error(e.message);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to generate outfits");
     } finally {
       setOutfitGenerating(false);
     }
   };
-return (
+
+  /* ---------- Upload handler ---------- */
+  function handleUploadClick() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          sessionStorage.setItem("pendingUpload", reader.result as string);
+          window.location.href = "/outfit-analysis";
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  }
+
+  /* ---------- Render ---------- */
+  return (
     <AppLayout>
       <div className="p-4 md:p-8 mx-auto max-w-7xl space-y-8 overflow-x-hidden">
 
@@ -186,13 +216,13 @@ return (
             Your <span className="gold-text">Dressing Room</span>
           </h1>
           <p className="text-muted-foreground mt-2 text-lg">
-            Browse your analyzed outfits. Upload new ones or revisit past looks.
+            Browse your analyzed outfits. Generate new combinations from your closet.
           </p>
         </motion.div>
 
         {/* ---- UPLOAD + SEARCH BAR ---- */}
         <div className="flex flex-col md:flex-row gap-6 items-stretch md:items-center justify-between">
-          {/* Glowing Upload Button */}
+          {/* Upload Button */}
           <div className="relative rounded-[1.5rem] border-[0.75px] border-border p-[3px]">
             <GlowingEffect spread={60} glow proximity={80} inactiveZone={0.01} borderWidth={3} />
             <motion.button
@@ -208,267 +238,305 @@ return (
               >
                 <Upload className="w-6 h-6" />
               </motion.div>
-              <span>Upload Outfit</span>
+              Upload New Outfit
             </motion.button>
           </div>
 
+          {/* Generate Button */}
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={openGenerateModal}
+            className="flex items-center gap-3 px-8 py-4 rounded-xl bg-gradient-to-r from-purple-500/20 via-purple-500/30 to-purple-500/20 border border-purple-500/30 text-purple-500 font-sans font-semibold text-base hover:from-purple-500/30 hover:to-purple-500/40 transition-all shadow-lg shadow-purple-500/10"
+          >
+            <Sparkles className="w-6 h-6" />
+            Generate Outfit
+          </motion.button>
+
           {/* Search + View Toggle */}
           <div className="flex items-center gap-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
-                placeholder="Search outfits…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-muted/30 border border-border/50 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30 transition-all"
+                placeholder="Search looks..."
+                className="pl-10 pr-4 py-2.5 rounded-xl bg-muted/50 border border-border/50 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
               />
             </div>
-            <div className="flex items-center gap-1 bg-muted/30 rounded-xl p-1 border border-border/50">
-              <button
-                onClick={() => setView("grid")}
-                className={`p-2 rounded-lg transition-colors ${view === "grid" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}
-              >
+            <div className="flex bg-muted/30 rounded-xl p-1 border border-border/30">
+              <button onClick={() => setViewMode("grid")} className={`p-2 rounded-lg transition-all ${viewMode === "grid" ? "bg-muted/60 shadow-sm" : ""}`}>
                 <Grid3X3 className="w-4 h-4" />
               </button>
-              <button
-                onClick={() => setView("list")}
-                className={`p-2 rounded-lg transition-colors ${view === "list" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}
-              >
+              <button onClick={() => setViewMode("list")} className={`p-2 rounded-lg transition-all ${viewMode === "list" ? "bg-muted/60 shadow-sm" : ""}`}>
                 <List className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
 
-        
-              {/* ---- OUTFIT GENERATOR ---- */}
-              <div className="flex justify-center">
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    if (items.length === 0) { toast.error("Upload and analyze an outfit first"); return; }
-                    setShowOutfitModal(true);
-                  }}
-                  disabled={outfitGenerating}
-                  className="relative flex items-center gap-3 px-8 py-4 rounded-xl bg-gradient-to-r from-purple-500/20 via-purple-500/30 to-purple-500/20 border border-purple-500/30 text-purple-500 font-sans font-semibold text-base hover:from-purple-500/30 hover:to-purple-500/40 transition-all shadow-lg shadow-purple-500/10"
-                >
-                  {outfitGenerating ? (
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-6 h-6" />
-                  )}
-                  <span>{outfitGenerating ? "Generating..." : "What should I wear today?"}</span>
-                </motion.button>
+        {/* ---- GALLERY / EMPTY STATE ---- */}
+        {loading ? (
+          <div className="flex items-center justify-center py-32">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-32 space-y-6">
+            <div className="w-20 h-20 mx-auto rounded-full bg-muted/40 flex items-center justify-center">
+              <ShoppingBag className="w-10 h-10 text-muted-foreground/60" />
+            </div>
+            <h3 className="font-display text-2xl text-foreground">Your dressing room is empty</h3>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Upload your first outfit photo to get personalized style analysis and AI recommendations.
+            </p>
+          </motion.div>
+        ) : viewMode === "grid" ? (
+          /* ---- GRID VIEW ---- */
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+            {filtered.map((item, idx) => (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.03 }}
+                className="group relative rounded-2xl overflow-hidden border border-border/50 bg-muted/10 hover:border-primary/30 transition-all duration-300"
+              >
+                <div className="aspect-[3/4] overflow-hidden">
+                  <img src={item.image_url} alt={item.overall_style} loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                  <p className="text-white text-sm font-semibold truncate">{item.overall_style || "Unstyled"}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`text-xs font-bold ${scoreColor(item.style_score)}`}>{item.style_score}</span>
+                    <span className="text-white/60 text-xs">{timeAgo(item.created_at)}</span>
+                  </div>
+                </div>
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => handleDelete(item.id)} disabled={deleting === item.id}
+                    className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center hover:bg-red-500/80 transition-colors">
+                    {deleting === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 text-white" />}
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          /* ---- LIST VIEW ---- */
+          <div className="space-y-3">
+            {filtered.map((item) => (
+              <div key={item.id} className="flex items-center gap-4 p-4 rounded-2xl bg-muted/10 border border-border/30 hover:border-primary/20 transition-all">
+                <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0">
+                  <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate">{item.overall_style || "Unstyled"}</p>
+                  <p className="text-xs text-muted-foreground truncate">{item.summary}</p>
+                </div>
+                <span className={`text-xs font-bold ${scoreColor(item.style_score)}`}>{item.style_score}</span>
+                <span className="text-xs text-muted-foreground">{timeAgo(item.created_at)}</span>
+                <button onClick={() => handleDelete(item.id)} disabled={deleting === item.id}
+                  className="p-2 hover:bg-red-500/20 rounded-lg transition-colors">
+                  {deleting === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 text-red-400" />}
+                </button>
               </div>
+            ))}
+          </div>
+        )}
 
-              {/* Occasion Modal */}
-              <AnimatePresence>
-                {showOutfitModal && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
-                    onClick={() => setShowOutfitModal(false)}>
-                    <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl"
-                      onClick={(e) => e.stopPropagation()}>
-                      <h3 className="font-display text-xl font-bold text-foreground mb-2">What should I wear today?</h3>
-                      <p className="text-sm text-muted-foreground mb-6">Choose an occasion and I will create the perfect outfit from your closet.</p>
-                      <div className="grid grid-cols-1 gap-3">
-                        {occasionOptions.map((opt) => (
-                          <motion.button key={opt.id} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                            onClick={() => generateOutfit(opt.label)}
-                            className="flex items-center gap-4 p-4 rounded-xl bg-muted/20 border border-border/50 hover:border-primary/30 hover:bg-primary/5 transition-all text-left">
-                            <span className="text-2xl">{opt.emoji === "tie" ? "tie" : opt.emoji === "run" ? "run" : opt.emoji === "case" ? "case" : opt.emoji === "smile" ? "smile" : "heart"}</span>
-                            <div>
-                              <p className="font-semibold text-foreground">{opt.label}</p>
-                            </div>
-                          </motion.button>
-                        ))}
-                      </div>
-                      <button className="w-full mt-4 text-center text-muted-foreground hover:text-foreground py-2" onClick={() => setShowOutfitModal(false)}>Cancel</button>
+        {/* ---- GENERATE OUTFIT MODAL (3-step Quiz) ---- */}
+        <AnimatePresence>
+          {showOutfitModal && (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+              onClick={() => setShowOutfitModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+                className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-900/80 backdrop-blur-2xl p-8"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button onClick={() => setShowOutfitModal(false)}
+                  className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-xl transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+
+                {/* Step Indicator */}
+                <div className="flex items-center gap-2 mb-8">
+                  {[0, 1, 2].map((s) => (
+                    <div key={s} className={`flex-1 h-1 rounded-full transition-all ${s <= step ? "bg-primary" : "bg-white/10"}`} />
+                  ))}
+                </div>
+
+                {step === 0 && (
+                  <div className="space-y-6">
+                    <h2 className="font-display text-2xl font-bold">What's the occasion?</h2>
+                    <div className="grid grid-cols-2 gap-3">
+                      {OCCASIONS.map((o) => (
+                        <button key={o.id} onClick={() => setSelectedOccasion(o.id)}
+                          className={`p-4 rounded-xl border text-left transition-all ${
+                            selectedOccasion === o.id
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-white/10 bg-white/5 hover:bg-white/10"
+                          }`}>
+                          <span className="text-2xl">{o.emoji}</span>
+                          <p className="text-sm font-semibold mt-1">{o.label}</p>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
-              </AnimatePresence>
-{/* ---- CONTENT ---- */}
-        {loading ? (
-          <div className="flex items-center justify-center py-32">
-            <Loader2 className="w-10 h-10 animate-spin text-primary" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center py-32 space-y-5"
-          >
-            <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-              <Shirt className="w-12 h-12 text-primary/60" />
-            </div>
-            <h3 className="font-display text-2xl text-foreground">Your dressing room is empty</h3>
-            <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-              Upload and analyze your first outfit to see it here. Each analysis saves automatically.
-            </p>
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleUploadClick}
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl gold-gradient text-primary-foreground font-sans font-semibold shadow-lg"
-            >
-              <Sparkles className="w-5 h-5" /> Analyze Your First Outfit
-            </motion.button>
-          </motion.div>
-        ) : view === "grid" ? (
-          /* ======== GRID VIEW ======== */
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-          >
-            <AnimatePresence>
-              {filtered.map((item, idx) => (
-                <motion.div
-                  key={item.id}
-                  variants={cardVariants}
-                  layout
-                  exit={{ opacity: 0, scale: 0.9, y: -20 }}
-                  className="group"
-                >
-                  <div className="relative rounded-[1.5rem] border-[0.75px] border-border p-[3px] h-full">
-                    <GlowingEffect spread={30} glow proximity={48} inactiveZone={0.01} borderWidth={2} />
-                    <Card className="glass-card border-0 shadow-none h-full overflow-hidden">
-                      <CardContent className="p-0 h-full flex flex-col">
-                        {/* Thumbnail */}
-                        <div className="relative aspect-[3/4] overflow-hidden bg-muted/30">
-                          <img
-                            src={item.image_url}
-                            alt={item.overall_style || "Outfit"}
-                            className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110 group-hover:shadow-2xl"
-                            loading="lazy"
-                          />
-                          {/* Score badge */}
-                          <div className="absolute top-3 right-3">
-                            <Badge className={`${scoreColor(item.style_score)} bg-background/80 backdrop-blur-sm border-border/50 font-semibold text-xs px-2.5 py-1`}>
-                              <Star className="w-3 h-3 mr-1 inline" />
-                              {item.style_score}
-                            </Badge>
-                          </div>
-                          {/* Time */}
-                          <div className="absolute bottom-3 left-3">
-                            <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm text-[10px] text-muted-foreground">
-                              <Clock className="w-3 h-3 mr-1 inline" />
-                              {timeAgo(item.created_at)}
-                            </Badge>
-                          </div>
-                        </div>
 
-                        {/* Info */}
-                        <div className="p-4 flex-1 flex flex-col gap-3">
-                          <p className="font-display text-base font-bold text-foreground truncate">
-                            {item.overall_style || "Unnamed Outfit"}
-                          </p>
-                          <p className="text-xs text-muted-foreground line-clamp-2 flex-1 leading-relaxed">
-                            {item.summary || "No analysis summary available."}
-                          </p>
-                          {/* Actions */}
-                          <div className="flex items-center gap-2 pt-1">
-                            <Button
-                              size="sm"
-                              whileTap={{ scale: 0.95 }}
-                              className="flex-1 text-xs h-9 gold-gradient text-primary-foreground font-sans"
-                              onClick={handleUploadClick}
-                            >
-                              <Sparkles className="w-3.5 h-3.5 mr-1" /> Re‑Analyze
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              whileTap={{ scale: 0.9 }}
-                              className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => handleDelete(item.id)}
-                              disabled={deleting === item.id}
-                            >
-                              {deleting === item.id ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="w-4 h-4" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                {step === 1 && (
+                  <div className="space-y-6">
+                    <h2 className="font-display text-2xl font-bold">What's the weather?</h2>
+                    <div className="grid grid-cols-3 gap-3">
+                      {WEATHERS.map((w) => (
+                        <button key={w.id} onClick={() => setSelectedWeather(w.id)}
+                          className={`p-4 rounded-xl border text-center transition-all ${
+                            selectedWeather === w.id
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-white/10 bg-white/5 hover:bg-white/10"
+                          }`}>
+                          <span className="text-2xl">{w.emoji}</span>
+                          <p className="text-sm font-semibold mt-1">{w.label}</p>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        ) : (
-          /* ======== LIST VIEW ======== */
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="space-y-4"
-          >
-            <AnimatePresence>
-              {filtered.map((item, idx) => (
-                <motion.div
-                  key={item.id}
-                  variants={cardVariants}
-                  layout
-                  exit={{ opacity: 0, height: 0 }}
-                >
-                  <Card className="glass-card border-border/50 overflow-hidden">
-                    <CardContent className="p-4 flex items-center gap-5">
-                      <div className="w-20 h-24 rounded-xl overflow-hidden bg-muted/30 flex-shrink-0 shadow-md">
-                        <img src={item.image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-display text-sm font-bold text-foreground truncate">
-                            {item.overall_style || "Unnamed"}
-                          </p>
-                          <Badge className={`${scoreColor(item.style_score)} text-xs flex-shrink-0`}>
-                            <Star className="w-3 h-3 mr-1 inline" />
-                            {item.style_score}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate mt-1">{item.summary}</p>
-                        <p className="text-[10px] text-muted-foreground/60 mt-1.5">
-                          <Clock className="w-3 h-3 mr-1 inline" />
-                          {timeAgo(item.created_at)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <Button
-                          size="sm"
-                          whileTap={{ scale: 0.95 }}
-                          className="text-xs h-9 gold-gradient text-primary-foreground font-sans"
-                          onClick={handleUploadClick}
-                        >
-                          <Sparkles className="w-3.5 h-3.5 mr-1" /> Re‑Analyze
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          whileTap={{ scale: 0.9 }}
-                          className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDelete(item.id)}
-                          disabled={deleting === item.id}
-                        >
-                          {deleting === item.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
+                )}
+
+                {step === 2 && (
+                  <div className="space-y-6">
+                    <h2 className="font-display text-2xl font-bold">Color palette?</h2>
+                    <div className="grid grid-cols-2 gap-3">
+                      {PALETTES.map((p) => (
+                        <button key={p.id} onClick={() => setSelectedPalette(p.id)}
+                          className={`p-4 rounded-xl border text-left transition-all ${
+                            selectedPalette === p.id
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-white/10 bg-white/5 hover:bg-white/10"
+                          }`}>
+                          <span className="text-2xl">{p.emoji}</span>
+                          <p className="text-sm font-semibold mt-1">{p.label}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={handleStepNext}
+                  className="w-full mt-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors">
+                  {step < 2 ? "Next" : "✨ Generate Outfits"}
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ---- GENERATED OUTFITS (Collage Cards) ---- */}
+        {outfitGenerating && (
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center space-y-4">
+              <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
+              <p className="text-muted-foreground">AI is styling your outfits...</p>
+            </div>
+          </div>
         )}
+
+        <AnimatePresence>
+          {generatedOutfits.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="font-display text-2xl font-bold flex items-center gap-2">
+                  <Sparkles className="w-6 h-6 text-primary" />
+                  Your AI Styled Outfits
+                </h2>
+                <button onClick={() => setGeneratedOutfits([])}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Dismiss
+                </button>
+              </div>
+
+              {/* 2-column grid for collage cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {generatedOutfits.map((option, idx) => (
+                  <div key={idx}
+                    className="relative bg-zinc-900/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 overflow-hidden"
+                  >
+                    {/* Outfit name badge */}
+                    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white z-40">
+                      {option.outfit_name}
+                    </div>
+
+                    {/* Collage container */}
+                    <div className="relative h-80 w-full mt-8">
+                      {/* Stack items with flat-lay positioning */}
+                      {option.items.map((item, itemIdx) => {
+                        const isTop = item.type === "top" || item.type === "dress" || itemIdx === 0;
+                        const isBottom = item.type === "bottom" || item.type === "jeans" || itemIdx === 1;
+                        const isShoes = item.type === "shoes" || item.type === "footwear" || itemIdx === 2;
+                        let positionClass = "";
+                        if (isBottom) {
+                          positionClass = "z-10 bottom-0 left-0 w-full rounded-xl shadow-lg -rotate-2 translate-y-10";
+                        } else if (isShoes) {
+                          positionClass = "z-30 bottom-0 right-0 w-1/3 rounded-xl shadow-xl rotate-12 translate-x-4 translate-y-4";
+                        } else {
+                          positionClass = "z-20 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-2/3 rounded-xl shadow-lg rotate-2";
+                        }
+                        return (
+                          <div key={item.id}
+                            className={`absolute ${positionClass} transition-all duration-300 hover:scale-105 hover:z-40`}
+                          >
+                            <img
+                              src={item.image_url}
+                              alt={item.label || item.type}
+                              className="w-full h-full object-cover rounded-xl border border-white/10"
+                              style={{ maxHeight: isShoes ? "80px" : "160px" }}
+                            />
+                            <div className="absolute bottom-1 left-1 right-1 bg-black/50 backdrop-blur-sm rounded-lg px-2 py-0.5 text-xs text-white truncate">
+                              {item.label || item.type} · {item.color}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Reason */}
+                    {option.reason && (
+                      <p className="text-xs text-muted-foreground mt-4 italic leading-relaxed">
+                        "{option.reason}"
+                      </p>
+                    )}
+
+                    {/* Wear button */}
+                    <button
+                      onClick={() => toast.success(`Wearing ${option.outfit_name}!`)}
+                      className="w-full mt-4 py-2.5 rounded-xl bg-primary/20 border border-primary/30 text-primary hover:bg-primary/30 transition-all text-sm font-semibold flex items-center justify-center gap-2"
+                    >
+                      {idx === 0 ? "👕" : "👗"} Wear {option.outfit_name}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Try again button */}
+              <div className="text-center">
+                <button onClick={openGenerateModal}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/10 hover:bg-white/5 transition-all text-sm">
+                  <Sparkles className="w-4 h-4" />
+                  Try Different Options
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ---- SCROLL TO TOP ---- */}
         <motion.button
@@ -480,76 +548,8 @@ return (
           <ArrowUp className="w-5 h-5" />
         </motion.button>
 
-        
-              {/* Generated Outfit Card */}
-              <AnimatePresence>
-                {generatedOutfit && (
-                  <div className="relative rounded-[1.5rem] border-[0.75px] border-border p-3">
-                    <GlowingEffect spread={60} glow proximity={64} inactiveZone={0.01} borderWidth={3} />
-                    <Card className="glass-card border-0 shadow-none">
-                      <CardContent className="p-6 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2">
-                              <Sparkles className="w-5 h-5 text-primary" /> {generatedOutfit.outfit_name || "Styled Outfit"}
-                            </h3>
-                            <p className="text-sm text-muted-foreground mt-1">{generatedOutfit.outfit_description}</p>
-                          </div>
-                          <button className="p-2 hover:bg-muted/20 rounded-lg" onClick={() => setGeneratedOutfit(null)}>
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                        {generatedOutfit.image_url && (
-                          <div className="rounded-xl overflow-hidden border border-border/50 bg-muted/20 aspect-[3/4] max-w-sm mx-auto">
-                            <img src={generatedOutfit.image_url} alt="Generated outfit" className="w-full h-full object-cover"
-                              onError={(e) => { e.target.style.display = "none"; }} />
-                          </div>
-                        )}
-                        {generatedOutfit.selected_items && generatedOutfit.selected_items.length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Selected Items</p>
-                            <div className="flex flex-wrap gap-2">
-                              {generatedOutfit.selected_items.map((item) => (
-                                <Badge key={item.id} variant="outline" className="bg-muted/20">{item.color} {item.type}</Badge>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        <button onClick={() => setShowOutfitModal(true)}
-                          className="w-full py-2.5 rounded-xl border border-primary/30 text-primary hover:bg-primary/10 transition-all text-sm font-medium">
-                          Try Another Occasion
-                        </button>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-              </AnimatePresence>
-{/* ---- FOOTER ---- */}
-        <Footer />
+        {/* ---- FOOTER ---- */}
       </div>
     </AppLayout>
   );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Simple file input handler: opens picker, stores in sessionStorage  */
-/* ------------------------------------------------------------------ */
-
-
-function handleUploadClick() {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.onchange = (e: any) => {
-    const file = e.target?.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        sessionStorage.setItem("pendingUpload", reader.result as string);
-        window.location.href = "/outfit-analysis";
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-  input.click();
 }
