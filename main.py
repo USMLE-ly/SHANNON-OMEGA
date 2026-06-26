@@ -585,6 +585,7 @@ def debug_analyze():
         return jsonify({"status": "exception", "error": str(e)})
 
 @app.route("/", methods=["GET"])
+@app.route("/api/health", methods=["GET"])
 @app.route("/health", methods=["GET"])
 def health():
     closet_count = len(qdrant_get_all_items())
