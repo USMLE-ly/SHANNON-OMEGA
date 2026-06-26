@@ -34,7 +34,7 @@ try:
 except ImportError:
     blob_put = None
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # project root
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 _RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
