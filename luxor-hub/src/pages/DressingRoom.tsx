@@ -160,7 +160,7 @@ export default function DressingRoomPage() {
     setGeneratedOutfits([]);
 
     try {
-      const api = import.meta.env.VITE_PUBLIC_API_URL || "https://python--libyausmle.replit.app";
+      const api = "https://python--libyausmle.replit.app";
       const genResp = await fetch(api + "/api/v1/dressing-room/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
