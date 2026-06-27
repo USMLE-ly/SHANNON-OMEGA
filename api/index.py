@@ -184,23 +184,28 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 SACRED_PROMPT = """You are a rigorous, non-creative fashion classification robot. Ignore the background 100%. Look ONLY at the person in the photo.
 
-Output this exact JSON. Do NOT alter the gender. Do NOT hallucinate items.
+You MUST return valid JSON with ALL of the following keys. Every key is REQUIRED. Do NOT omit any key.
 
 {
-  "gender": "Female" or "Male",
-  "top_type": "exact top worn",
-  "bottom_type": "exact bottom worn",
-  "footwear": "exact footwear",
-  "accessories": "one existing accessory",
-  "style_score": integer between 70 and 95,
-  "style_name": "2-word vibe title",
-  "strengths": ["3 specific strengths based on detected clothing"],
-  "audit": "15-word summary",
-  "tweak_plan": "1-sentence to swap/add one accessory using EXACT items",
-  "generation_prompt": "20-word prompt for editorial shot with edit applied"
+  "gender": "Female" or "Male" (ALWAYS pick one, never empty),
+  "top_type": "exact top worn" or "None" if no top visible,
+  "bottom_type": "exact bottom worn" or "None" if no bottom visible,
+  "footwear": "exact footwear" or "None" if no footwear visible,
+  "accessories": "one existing accessory" or "None" if no accessories,
+  "style_score": integer between 70 and 95 (ALWAYS an integer, never null),
+  "style_name": "2-word vibe title" (ALWAYS a 2-word string, never empty),
+  "strengths": ["3 specific strengths based on detected clothing"] (ALWAYS an array of 3 strings, never empty),
+  "audit": "15-word summary" (ALWAYS a string of at least 10 words),
+  "tweak_plan": "1-sentence to swap/add one accessory using EXACT items" (ALWAYS a string, never empty),
+  "generation_prompt": "20-word prompt for editorial shot with edit applied" (ALWAYS a string of at least 15 words)
 }
 
-Return ONLY this JSON. No conversation."""
+CRITICAL RULES:
+- style_score must be an integer (number), never null, never a string, never 0
+- strengths must be an array of exactly 3 strings
+- If you cannot detect an item, write "None" as the string — do NOT omit the key
+- Every single key above MUST be present in your JSON output
+- Return ONLY this JSON. No conversation. No markdown. No explanation."""
 
 STYLIST_PROMPT = """You are FASHION-OMEGA, an expert fashion stylist AI. Guide the user through a 3-step quiz:
 Step 1: Ask about their vibe (Casual, Business, Party, Date Night, Sport).
@@ -344,29 +349,36 @@ def get_fashion_decision(image_b64: str) -> Dict[str, Any]:
 def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     items_detected = []
     for key in ["top_type", "bottom_type", "footwear", "accessories"]:
-        if result.get(key):
-            items_detected.append(result[key])
+        val = result.get(key, "")
+        if val and val != "None" and val.lower() != "none":
+            items_detected.append(val)
     actual_colors = result.get("actual_colors", [])
-    if not actual_colors:
+    if not actual_colors or not isinstance(actual_colors, list):
         color_map = {"Pink": "Pink", "Red": "Red", "Blue": "Blue", "Black": "Black", "White": "White", "Cream": "Cream", "Green": "Green", "Brown": "Brown", "Gold": "Gold", "Silver": "Silver", "Grey": "Grey", "Navy": "Navy", "Tan": "Tan", "Beige": "Beige", "Yellow": "Yellow"}
+        actual_colors = []
         for item in items_detected:
             for name, val in color_map.items():
                 if name.lower() in item.lower() and val not in actual_colors:
                     actual_colors.append(val)
+        if not actual_colors:
+            actual_colors = ["Black", "White"]
     strengths = result.get("strengths", [])
-    if len(strengths) < 3:
-        strengths = [f"Choice of {result.get('top_type', 'top')}", f"Coordination with {result.get('bottom_type', 'bottom')}", "Overall cohesive styling"]
-    return {"success": True, "source": result.get("source", "unknown"), "style_name": result.get("style_name", ""), "style_score": result.get("style_score"), "gender": result.get("gender", ""), "actual_colors": actual_colors, "items_detected": items_detected, "strengths": strengths, "audit": result.get("audit", ""), "tweak_plan": result.get("tweak_plan", ""), "generation_prompt": result.get("generation_prompt", "")}
-
-_executor = ThreadPoolExecutor(max_workers=2)
-
-# ===========================================================================
-# ENDPOINTS
-# ===========================================================================
-
-# ---------------------------------------------------------------------------
-# Analysis
-# ---------------------------------------------------------------------------
+    if not strengths or not isinstance(strengths, list) or len(strengths) < 3:
+        detected = [s for s in [result.get(k, "") for k in ["top_type", "bottom_type", "footwear", "accessories"]] if s and s != "None"]
+        strengths = []
+        if detected:
+            for i, d in enumerate(detected[:3]):
+                strengths.append(f"Well-chosen {d}")
+        while len(strengths) < 3:
+            strengths.append("Cohesive outfit coordination")
+    style_score = result.get("style_score")
+    if style_score is None or not isinstance(style_score, (int, float)) or style_score < 60:
+        style_score = 78
+    style_score = int(round(style_score))
+    style_name = result.get("style_name", "")
+    if not style_name:
+        style_name = "Modern Classic"
+    return {"success": True, "source": result.get("source", "unknown"), "style_name": style_name, "style_score": style_score, "gender": result.get("gender", "Female"), "actual_colors": actual_colors, "items_detected": items_detected, "strengths": strengths, "audit": result.get("audit", "A well-coordinated outfit with balanced styling."), "tweak_plan": result.get("tweak_plan", "Consider adding a structured blazer for a more polished look."), "generation_prompt": result.get("generation_prompt", "A fashion-forward person wearing a stylish outfit in an editorial setting.")}
 @app.route("/api/v1/analyze-outfit", methods=["POST", "OPTIONS"])
 def analyze_outfit():
     if request.method == "OPTIONS":
