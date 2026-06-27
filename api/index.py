@@ -54,6 +54,12 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
 OPENROUTER_TEXT_MODEL = os.getenv("OPENROUTER_TEXT_MODEL", "google/gemma-4-31b-it:free")
+# Fallback models tried in order when primary is rate-limited
+OPENROUTER_FALLBACK_MODELS = [
+    "google/gemma-4-26b-a4b-it:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "nousresearch/hermes-3-llama-3.1-405b:free",
+]
 
 CIPHER_MAX_TOKENS = int(os.getenv("CIPHER_MAX_TOKENS", "1200"))
 PORT = int(os.getenv("PORT", "5000"))
@@ -259,54 +265,89 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
         return None
     compressed = compress_image_b64(image_b64)
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [{"role": "user", "content": [
-            {"type": "text", "text": system_prompt},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}},
-        ]}],
-        "max_tokens": CIPHER_MAX_TOKENS,
-        "temperature": temperature,
-    }
-    try:
-        resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
-        _log.info("[OPENROUTER-VISION] HTTP %s (key=%s...)", resp.status_code, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
-        if resp.status_code == 200:
-            raw = resp.json()["choices"][0]["message"]["content"]
-            match = re.search(r"\{[\s\S]*\}", raw)
-            if match:
-                return json.loads(match.group(0))
-    except requests.exceptions.Timeout:
-        _log.error("[OPENROUTER-VISION] TIMEOUT after 120s (key=%s...)", OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
-        return None
-    except Exception as exc:
-        _log.error("[OPENROUTER-VISION] %s (key=%s...)", exc, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
+    
+    # Try primary model first, then fallback models on rate-limit
+    models_to_try = [OPENROUTER_MODEL] + OPENROUTER_FALLBACK_MODELS
+    last_error = None
+    
+    for model in models_to_try:
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": system_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}},
+            ]}],
+            "max_tokens": CIPHER_MAX_TOKENS,
+            "temperature": temperature,
+        }
+        try:
+            _log.info("[OPENROUTER-VISION] Trying model=%s", model)
+            resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
+            _log.info("[OPENROUTER-VISION] HTTP %s for %s (key=%s...)", resp.status_code, model, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
+            
+            if resp.status_code == 200:
+                raw = resp.json()["choices"][0]["message"]["content"]
+                match = re.search(r"\{[\s\S]*\}", raw)
+                if match:
+                    return json.loads(match.group(0))
+                _log.warning("[OPENROUTER-VISION] No JSON in response from %s", model)
+            elif resp.status_code == 429:
+                _log.warning("[OPENROUTER-VISION] Rate limited on %s, trying next model", model)
+                last_error = "rate_limited"
+                continue
+            else:
+                _log.error("[OPENROUTER-VISION] HTTP %s from %s: %s", resp.status_code, model, resp.text[:200])
+                last_error = f"http_{resp.status_code}"
+                continue
+        except requests.exceptions.Timeout:
+            _log.error("[OPENROUTER-VISION] TIMEOUT on %s", model)
+            last_error = "timeout"
+            continue
+        except Exception as exc:
+            _log.error("[OPENROUTER-VISION] %s on %s (key=%s...)", exc, model, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
+            last_error = str(exc)
+            continue
+    
+    if last_error:
+        _log.error("[OPENROUTER-VISION] All models failed, last error: %s", last_error)
     return None
 
 def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Optional[Dict[str, Any]]:
     if not OPENROUTER_API_KEY:
         return None
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
-    groq_messages = []
-    if system_prompt:
-        groq_messages.append({"role": "system", "content": system_prompt})
-    groq_messages.extend(messages)
-    payload = {
-        "model": OPENROUTER_TEXT_MODEL,
-        "messages": groq_messages,
-        "max_tokens": CIPHER_MAX_TOKENS,
-        "temperature": temperature,
-    }
-    try:
-        resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=15)
-        _log.info("[OPENROUTER-TEXT] HTTP %s (key=%s...)", resp.status_code, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
-        if resp.status_code == 200:
-            raw = resp.json()["choices"][0]["message"]["content"]
-            match = re.search(r"\{[\s\S]*\}", raw)
-            if match:
-                return json.loads(match.group(0))
-    except Exception as exc:
-        _log.error("[OPENROUTER-TEXT] %s", exc)
+    
+    models_to_try = [OPENROUTER_TEXT_MODEL] + [m for m in OPENROUTER_FALLBACK_MODELS if m != OPENROUTER_TEXT_MODEL]
+    
+    for model in models_to_try:
+        groq_messages = []
+        if system_prompt:
+            groq_messages.append({"role": "system", "content": system_prompt})
+        groq_messages.extend(messages)
+        payload = {
+            "model": model,
+            "messages": groq_messages,
+            "max_tokens": CIPHER_MAX_TOKENS,
+            "temperature": temperature,
+        }
+        try:
+            _log.info("[OPENROUTER-TEXT] Trying model=%s", model)
+            resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=15)
+            _log.info("[OPENROUTER-TEXT] HTTP %s for %s (key=%s...)", resp.status_code, model, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
+            if resp.status_code == 200:
+                raw = resp.json()["choices"][0]["message"]["content"]
+                match = re.search(r"\{[\s\S]*\}", raw)
+                if match:
+                    return json.loads(match.group(0))
+            elif resp.status_code == 429:
+                _log.warning("[OPENROUTER-TEXT] Rate limited on %s, trying next", model)
+                continue
+            else:
+                _log.error("[OPENROUTER-TEXT] HTTP %s from %s: %s", resp.status_code, model, resp.text[:200])
+                continue
+        except Exception as exc:
+            _log.error("[OPENROUTER-TEXT] %s on %s", exc, model)
+            continue
     return None
 
 # ---------------------------------------------------------------------------
@@ -602,12 +643,19 @@ def debug_analyze():
         return jsonify({"error": "Missing image_b64"}), 400
     compressed = compress_image_b64(image_b64)
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
-    payload = {"model": OPENROUTER_MODEL, "messages": [{"role": "user", "content": [{"type": "text", "text": SACRED_PROMPT}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}}]}], "max_tokens": CIPHER_MAX_TOKENS, "temperature": 0.2}
-    try:
-        resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
-        return jsonify({"status": "success" if resp.status_code == 200 else "error", "code": resp.status_code, "text": resp.text[:500] if resp.status_code != 200 else "", "raw": resp.json() if resp.status_code == 200 else {}})
-    except Exception as e:
-        return jsonify({"status": "exception", "error": str(e)})
+    models_to_try = [OPENROUTER_MODEL] + OPENROUTER_FALLBACK_MODELS
+    for model in models_to_try:
+        payload = {"model": model, "messages": [{"role": "user", "content": [{"type": "text", "text": SACRED_PROMPT}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}}]}], "max_tokens": CIPHER_MAX_TOKENS, "temperature": 0.2}
+        try:
+            resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
+            if resp.status_code == 200:
+                return jsonify({"status": "success", "code": 200, "model": model, "raw": resp.json()})
+            elif resp.status_code == 429:
+                continue
+            return jsonify({"status": "error", "code": resp.status_code, "model": model, "text": resp.text[:500]})
+        except Exception as e:
+            return jsonify({"status": "exception", "error": str(e), "model": model})
+    return jsonify({"status": "error", "code": 429, "text": "All models rate-limited"})
 
 @app.route("/", methods=["GET"])
 @app.route("/api/health", methods=["GET"])
