@@ -66,7 +66,7 @@ BLOB_READ_WRITE_TOKEN = os.getenv("BLOB_READ_WRITE_TOKEN", "")
 QDRANT_URL = os.getenv("QDRANT_URL", "")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
-_log.info("Groq key loaded: %s", bool(GROQ_API_KEY))
+_log.info("Groq key loaded: %s (masked: %s)", bool(GROQ_API_KEY), GROQ_API_KEY[:8] + "..." + GROQ_API_KEY[-4:] if GROQ_API_KEY else "NONE")
 _log.info("Vision model: %s", GROQ_VISION_MODEL)
 _log.info("Text model: %s", GROQ_TEXT_MODEL)
 _log.info("Blob token: %s", bool(BLOB_READ_WRITE_TOKEN))
@@ -236,8 +236,8 @@ def compress_image_b64(image_b64: str) -> str:
         raw = base64.b64decode(image_b64)
         img = Image.open(io.BytesIO(raw))
         w, h = img.size
-        if max(w, h) > 128:
-            ratio = 128.0 / max(w, h)
+        if max(w, h) > 800:
+            ratio = 800.0 / max(w, h)
             img = img.resize((int(w * ratio), int(h * ratio)), _RESAMPLE_LANCZOS)
         buf = io.BytesIO()
         img.convert("RGB").save(buf, format="JPEG", quality=50, optimize=True)
@@ -265,13 +265,17 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
     }
     try:
         resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=120)
+        _log.info("[GROQ-VISION] HTTP %s (key=%s...)", resp.status_code, GROQ_API_KEY[:8] if GROQ_API_KEY else "NONE")
         if resp.status_code == 200:
             raw = resp.json()["choices"][0]["message"]["content"]
             match = re.search(r"\{[\s\S]*\}", raw)
             if match:
                 return json.loads(match.group(0))
+    except requests.exceptions.Timeout:
+        _log.error("[GROQ-VISION] TIMEOUT after 120s (key=%s...)", GROQ_API_KEY[:8] if GROQ_API_KEY else "NONE")
+        return None
     except Exception as exc:
-        _log.error("[GROQ-VISION] %s", exc)
+        _log.error("[GROQ-VISION] %s (key=%s...)", exc, GROQ_API_KEY[:8] if GROQ_API_KEY else "NONE")
     return None
 
 def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Optional[Dict[str, Any]]:
@@ -290,6 +294,7 @@ def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temp
     }
     try:
         resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=15)
+        _log.info("[GROQ-TEXT] HTTP %s (key=%s...)", resp.status_code, GROQ_API_KEY[:8] if GROQ_API_KEY else "NONE")
         if resp.status_code == 200:
             raw = resp.json()["choices"][0]["message"]["content"]
             match = re.search(r"\{[\s\S]*\}", raw)
@@ -600,7 +605,7 @@ def health():
     return jsonify({
         "status": "ok",
         "service": "luxor-fashion-omega-v5",
-        "groq_configured": bool(GROQ_API_KEY),
+        "groq_configured": bool(GROQ_API_KEY),"groq_key_prefix": GROQ_API_KEY[:8] if GROQ_API_KEY else "",
         "blob_configured": bool(BLOB_READ_WRITE_TOKEN),
         "qdrant_configured": bool(QDRANT_URL and QDRANT_API_KEY),
         "closet_items": closet_count,
