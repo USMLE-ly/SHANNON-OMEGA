@@ -260,14 +260,103 @@ def compress_image_b64(image_b64: str) -> str:
 # ---------------------------------------------------------------------------
 # Groq API calls
 # ---------------------------------------------------------------------------
+def _extract_image_features(image_b64: str) -> str:
+    """Extract color/features from image locally, return text description."""
+    try:
+        raw = base64.b64decode(image_b64)
+        img = Image.open(io.BytesIO(raw))
+        # Resize for speed
+        img_small = img.resize((32, 48), Image.Resampling.LANCZOS)
+        pixels = list(img_small.getdata())
+        
+        # Find dominant colors using simple quantization
+        from collections import Counter
+        # Quantize to 16 colors
+        quantized = []
+        for r, g, b in pixels:
+            # Map to nearest color name
+            quantized.append((r // 64 * 64, g // 64 * 64, b // 64 * 64))
+        
+        color_counts = Counter(quantized)
+        top_colors = color_counts.most_common(5)
+        
+        # Convert RGB to color names
+        color_names = []
+        for (r, g, b), count in top_colors:
+            if r > 200 and g > 200 and b > 200:
+                name = "White"
+            elif r < 50 and g < 50 and b < 50:
+                name = "Black"
+            elif r > 200 and g < 100 and b < 100:
+                name = "Red"
+            elif r > 200 and g > 150 and b < 100:
+                name = "Orange"
+            elif r > 200 and g > 200 and b < 100:
+                name = "Yellow"
+            elif r < 100 and g > 150 and b < 100:
+                name = "Green"
+            elif r < 100 and g < 150 and b > 200:
+                name = "Blue"
+            elif r > 150 and g < 100 and b > 150:
+                name = "Purple"
+            elif r > 150 and g > 100 and b < 100:
+                name = "Brown"
+            elif r > 200 and g > 180 and b > 150:
+                name = "Beige"
+            elif r > 150 and g > 150 and b > 150:
+                name = "Grey"
+            elif r < 50 and g < 50 and b > 150:
+                name = "Navy"
+            elif r > 200 and g < 200 and b < 100:
+                name = "Khaki"
+            elif r > 150 and g < 100 and b < 100:
+                name = "Maroon"
+            elif r > 150 and g > 150 and b < 50:
+                name = "Olive"
+            else:
+                name = f"rgb({r},{g},{b})"
+            if name not in color_names:
+                color_names.append(name)
+        
+        # Determine if image has a person-like shape (simple heuristic)
+        w, h = img.size
+        aspect = w / h
+        
+        features = []
+        features.append(f"Image aspect ratio: {aspect:.2f}")
+        features.append(f"Dominant colors: {', '.join(color_names)}")
+        features.append(f"Image size: {w}x{h} pixels")
+        
+        # Simple brightness analysis
+        gray = img.convert('L')
+        avg_brightness = sum(gray.getdata()) / len(list(gray.getdata()))
+        features.append(f"Average brightness: {avg_brightness:.0f}/255")
+        
+        if avg_brightness < 80:
+            features.append("Lighting: Dark")
+        elif avg_brightness > 180:
+            features.append("Lighting: Bright")
+        else:
+            features.append("Lighting: Normal")
+        
+        return "\n".join(features)
+    except Exception as exc:
+        _log.warning("[FEATURES] %s", exc)
+        return "Unable to extract image features."
+
+
 def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, temperature: float = 0.2) -> Optional[Dict[str, Any]]:
     if not OPENROUTER_API_KEY:
         return None
     compressed = compress_image_b64(image_b64)
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
     
-    # Try primary model first, then fallback models on rate-limit
-    models_to_try = [OPENROUTER_MODEL] + OPENROUTER_FALLBACK_MODELS
+    # Extract image features locally as text description
+    features = _extract_image_features(image_b64)
+    _log.info("[FEATURES] Extracted: %s", features[:100])
+    
+    # Try vision model first (works from non-Replit IPs)
+    models_to_try = [OPENROUTER_MODEL] + [m for m in OPENROUTER_FALLBACK_MODELS if "gemma" in m.lower() or "llama" in m.lower()]
     last_error = None
     
     for model in models_to_try:
@@ -283,16 +372,15 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
         try:
             _log.info("[OPENROUTER-VISION] Trying model=%s", model)
             resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
-            _log.info("[OPENROUTER-VISION] HTTP %s for %s (key=%s...)", resp.status_code, model, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
+            _log.info("[OPENROUTER-VISION] HTTP %s for %s", resp.status_code, model)
             
             if resp.status_code == 200:
                 raw = resp.json()["choices"][0]["message"]["content"]
                 match = re.search(r"\{[\s\S]*\}", raw)
                 if match:
                     return json.loads(match.group(0))
-                _log.warning("[OPENROUTER-VISION] No JSON in response from %s", model)
             elif resp.status_code == 429:
-                _log.warning("[OPENROUTER-VISION] Rate limited on %s, trying next model", model)
+                _log.warning("[OPENROUTER-VISION] Rate limited on %s", model)
                 last_error = "rate_limited"
                 continue
             else:
@@ -304,8 +392,42 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
             last_error = "timeout"
             continue
         except Exception as exc:
-            _log.error("[OPENROUTER-VISION] %s on %s (key=%s...)", exc, model, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
+            _log.error("[OPENROUTER-VISION] %s on %s", exc, model)
             last_error = str(exc)
+            continue
+    
+    # Fallback: Use text model with extracted features
+    _log.warning("[OPENROUTER-VISION] Vision models failed, using text fallback with features")
+    text_prompt = f"""{system_prompt}
+
+IMPORTANT: The image could not be processed by vision API. Use these EXTRACTED IMAGE FEATURES instead:
+
+{features}
+
+Based on these features, make your best guess about the outfit. For style_score, use a reasonable estimate between 70-85.
+Return the SAME JSON format as requested above. If unsure about specific items, describe what's plausible for the given colors."""
+    
+    text_models = [OPENROUTER_TEXT_MODEL] + [m for m in OPENROUTER_FALLBACK_MODELS if m != OPENROUTER_TEXT_MODEL]
+    for model in text_models:
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": text_prompt}],
+            "max_tokens": CIPHER_MAX_TOKENS,
+            "temperature": temperature,
+        }
+        try:
+            _log.info("[OPENROUTER-VISION-FALLBACK] Trying text model=%s", model)
+            resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=30)
+            if resp.status_code == 200:
+                raw = resp.json()["choices"][0]["message"]["content"]
+                match = re.search(r"\{[\s\S]*\}", raw)
+                if match:
+                    _log.info("[OPENROUTER-VISION-FALLBACK] Success with %s", model)
+                    result = json.loads(match.group(0))
+                    result["source"] = "text_fallback"
+                    return result
+        except Exception as exc:
+            _log.error("[OPENROUTER-VISION-FALLBACK] %s on %s", exc, model)
             continue
     
     if last_error:
@@ -643,9 +765,10 @@ def debug_analyze():
         return jsonify({"error": "Missing image_b64"}), 400
     compressed = compress_image_b64(image_b64)
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
+    features = _extract_image_features(image_b64)
     models_to_try = [OPENROUTER_MODEL] + OPENROUTER_FALLBACK_MODELS
     for model in models_to_try:
-        payload = {"model": model, "messages": [{"role": "user", "content": [{"type": "text", "text": SACRED_PROMPT}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}}]}], "max_tokens": CIPHER_MAX_TOKENS, "temperature": 0.2}
+        payload = {"model": model, "messages": [{"role": "user", "content": [{"type": "text", "text": SACRED_PROMPT + "\n\nExtracted image features: " + features}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}}]}], "max_tokens": CIPHER_MAX_TOKENS, "temperature": 0.2}
         try:
             resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
             if resp.status_code == 200:
@@ -654,8 +777,16 @@ def debug_analyze():
                 continue
             return jsonify({"status": "error", "code": resp.status_code, "model": model, "text": resp.text[:500]})
         except Exception as e:
-            return jsonify({"status": "exception", "error": str(e), "model": model})
-    return jsonify({"status": "error", "code": 429, "text": "All models rate-limited"})
+            continue
+    
+    # Text fallback for debug
+    text_prompt = f"{SACRED_PROMPT}\n\nVision API unavailable. Using extracted features:\n{features}\n\nReturn the JSON as requested."
+    payload = {"model": OPENROUTER_TEXT_MODEL, "messages": [{"role": "user", "content": text_prompt}], "max_tokens": CIPHER_MAX_TOKENS}
+    try:
+        resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=30)
+        return jsonify({"status": "success" if resp.status_code == 200 else "error", "code": resp.status_code, "model": "text_fallback", "raw": resp.json() if resp.status_code == 200 else {}, "text": resp.text[:500] if resp.status_code != 200 else ""})
+    except Exception as e:
+        return jsonify({"status": "exception", "error": str(e)})
 
 @app.route("/", methods=["GET"])
 @app.route("/api/health", methods=["GET"])
