@@ -50,10 +50,10 @@ CORS(app, origins=["*"])
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
-GROQ_TEXT_MODEL = os.getenv("GROQ_TEXT_MODEL", "llama-3.1-8b-instant")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
+OPENROUTER_TEXT_MODEL = os.getenv("OPENROUTER_TEXT_MODEL", "google/gemma-4-31b-it:free")
 
 CIPHER_MAX_TOKENS = int(os.getenv("CIPHER_MAX_TOKENS", "1200"))
 PORT = int(os.getenv("PORT", "5000"))
@@ -66,9 +66,9 @@ BLOB_READ_WRITE_TOKEN = os.getenv("BLOB_READ_WRITE_TOKEN", "")
 QDRANT_URL = os.getenv("QDRANT_URL", "")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
-_log.info("Groq key loaded: %s (masked: %s)", bool(GROQ_API_KEY), GROQ_API_KEY[:8] + "..." + GROQ_API_KEY[-4:] if GROQ_API_KEY else "NONE")
-_log.info("Vision model: %s", GROQ_VISION_MODEL)
-_log.info("Text model: %s", GROQ_TEXT_MODEL)
+_log.info("OpenRouter key loaded: %s (masked: %s)", bool(OPENROUTER_API_KEY), OPENROUTER_API_KEY[:8] + "..." + OPENROUTER_API_KEY[-4:] if OPENROUTER_API_KEY else "NONE")
+_log.info("Vision model: %s", OPENROUTER_MODEL)
+_log.info("Text model: %s", OPENROUTER_TEXT_MODEL)
 _log.info("Blob token: %s", bool(BLOB_READ_WRITE_TOKEN))
 _log.info("Qdrant: %s", bool(QDRANT_URL and QDRANT_API_KEY))
 
@@ -255,12 +255,12 @@ def compress_image_b64(image_b64: str) -> str:
 # Groq API calls
 # ---------------------------------------------------------------------------
 def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, temperature: float = 0.2) -> Optional[Dict[str, Any]]:
-    if not GROQ_API_KEY:
+    if not OPENROUTER_API_KEY:
         return None
     compressed = compress_image_b64(image_b64)
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
     payload = {
-        "model": GROQ_VISION_MODEL,
+        "model": OPENROUTER_MODEL,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": system_prompt},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}},
@@ -269,44 +269,44 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
         "temperature": temperature,
     }
     try:
-        resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=120)
-        _log.info("[GROQ-VISION] HTTP %s (key=%s...)", resp.status_code, GROQ_API_KEY[:8] if GROQ_API_KEY else "NONE")
+        resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
+        _log.info("[OPENROUTER-VISION] HTTP %s (key=%s...)", resp.status_code, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
         if resp.status_code == 200:
             raw = resp.json()["choices"][0]["message"]["content"]
             match = re.search(r"\{[\s\S]*\}", raw)
             if match:
                 return json.loads(match.group(0))
     except requests.exceptions.Timeout:
-        _log.error("[GROQ-VISION] TIMEOUT after 120s (key=%s...)", GROQ_API_KEY[:8] if GROQ_API_KEY else "NONE")
+        _log.error("[OPENROUTER-VISION] TIMEOUT after 120s (key=%s...)", OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
         return None
     except Exception as exc:
-        _log.error("[GROQ-VISION] %s (key=%s...)", exc, GROQ_API_KEY[:8] if GROQ_API_KEY else "NONE")
+        _log.error("[OPENROUTER-VISION] %s (key=%s...)", exc, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
     return None
 
 def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Optional[Dict[str, Any]]:
-    if not GROQ_API_KEY:
+    if not OPENROUTER_API_KEY:
         return None
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
     groq_messages = []
     if system_prompt:
         groq_messages.append({"role": "system", "content": system_prompt})
     groq_messages.extend(messages)
     payload = {
-        "model": GROQ_TEXT_MODEL,
+        "model": OPENROUTER_TEXT_MODEL,
         "messages": groq_messages,
         "max_tokens": CIPHER_MAX_TOKENS,
         "temperature": temperature,
     }
     try:
-        resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=15)
-        _log.info("[GROQ-TEXT] HTTP %s (key=%s...)", resp.status_code, GROQ_API_KEY[:8] if GROQ_API_KEY else "NONE")
+        resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=15)
+        _log.info("[OPENROUTER-TEXT] HTTP %s (key=%s...)", resp.status_code, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
         if resp.status_code == 200:
             raw = resp.json()["choices"][0]["message"]["content"]
             match = re.search(r"\{[\s\S]*\}", raw)
             if match:
                 return json.loads(match.group(0))
     except Exception as exc:
-        _log.error("[GROQ-TEXT] %s", exc)
+        _log.error("[OPENROUTER-TEXT] %s", exc)
     return None
 
 # ---------------------------------------------------------------------------
@@ -601,10 +601,10 @@ def debug_analyze():
     if not image_b64:
         return jsonify({"error": "Missing image_b64"}), 400
     compressed = compress_image_b64(image_b64)
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-    payload = {"model": GROQ_VISION_MODEL, "messages": [{"role": "user", "content": [{"type": "text", "text": SACRED_PROMPT}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}}]}], "max_tokens": CIPHER_MAX_TOKENS, "temperature": 0.2}
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
+    payload = {"model": OPENROUTER_MODEL, "messages": [{"role": "user", "content": [{"type": "text", "text": SACRED_PROMPT}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}}]}], "max_tokens": CIPHER_MAX_TOKENS, "temperature": 0.2}
     try:
-        resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=120)
+        resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
         return jsonify({"status": "success" if resp.status_code == 200 else "error", "code": resp.status_code, "text": resp.text[:500] if resp.status_code != 200 else "", "raw": resp.json() if resp.status_code == 200 else {}})
     except Exception as e:
         return jsonify({"status": "exception", "error": str(e)})
@@ -617,7 +617,7 @@ def health():
     return jsonify({
         "status": "ok",
         "service": "luxor-fashion-omega-v5",
-        "groq_configured": bool(GROQ_API_KEY),"groq_key_prefix": GROQ_API_KEY[:8] if GROQ_API_KEY else "",
+        "openrouter_configured": bool(OPENROUTER_API_KEY), "openrouter_key_prefix": OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "",
         "blob_configured": bool(BLOB_READ_WRITE_TOKEN),
         "qdrant_configured": bool(QDRANT_URL and QDRANT_API_KEY),
         "closet_items": closet_count,
