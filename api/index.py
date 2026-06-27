@@ -26,11 +26,10 @@ try:
     from qdrant_client import QdrantClient
     from qdrant_client.http import models as qdrant_models
 except ImportError:
-    QdrantClient = None
-    qdrant_models = None
-from qdrant_client.http import models as qdrant_models
+    QdrantClient = None  # type: ignore[assignment]
+    qdrant_models = None  # type: ignore[assignment]
 try:
-    from vercel_blob import put as blob_put
+    from vercel_blob import put as blob_put  # type: ignore[import]
 except ImportError:
     blob_put = None
 
@@ -265,7 +264,7 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
         "temperature": temperature,
     }
     try:
-        resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=60)
+        resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=120)
         if resp.status_code == 200:
             raw = resp.json()["choices"][0]["message"]["content"]
             match = re.search(r"\{[\s\S]*\}", raw)
@@ -311,6 +310,9 @@ def upload_image_to_blob(image_b64: str, prefix: str = "closet") -> Optional[str
         raw = base64.b64decode(image_b64)
         ext = "jpg"
         path = f"{prefix}/{uuid.uuid4().hex[:16]}.{ext}"
+        if blob_put is None:
+            _log.error("[BLOB] vercel_blob not available (import failed)")
+            return None
         resp = blob_put(path, raw, options={"addRandomSuffix": "false"})
         if isinstance(resp, dict):
             return resp.get("url") or resp.get("pathname") or None
@@ -324,8 +326,7 @@ def upload_image_to_blob(image_b64: str, prefix: str = "closet") -> Optional[str
 # ---------------------------------------------------------------------------
 def get_fashion_decision(image_b64: str) -> Dict[str, Any]:
     try:
-        future = _executor.submit(call_groq_vision, image_b64, SACRED_PROMPT, 0.2)
-        result = future.result(timeout=ANALYSIS_TIMEOUT)
+        result = call_groq_vision(image_b64, SACRED_PROMPT, 0.2)
         if result:
             result["source"] = "cipher_vision"
             return result
@@ -370,8 +371,7 @@ def analyze_outfit():
     if not image_b64:
         return jsonify({"error": "Missing image_b64"}), 400
     try:
-        future = _executor.submit(get_fashion_decision, image_b64)
-        result = future.result(timeout=ANALYSIS_TIMEOUT + 10)
+        result = get_fashion_decision(image_b64)
         return jsonify(map_analysis(result))
     except TimeoutError:
         _log.error("[ANALYZE] Timeout")
@@ -587,7 +587,7 @@ def debug_analyze():
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
     payload = {"model": GROQ_VISION_MODEL, "messages": [{"role": "user", "content": [{"type": "text", "text": SACRED_PROMPT}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}}]}], "max_tokens": CIPHER_MAX_TOKENS, "temperature": 0.2}
     try:
-        resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=60)
+        resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=120)
         return jsonify({"status": "success" if resp.status_code == 200 else "error", "code": resp.status_code, "text": resp.text[:500] if resp.status_code != 200 else "", "raw": resp.json() if resp.status_code == 200 else {}})
     except Exception as e:
         return jsonify({"status": "exception", "error": str(e)})

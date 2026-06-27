@@ -492,7 +492,7 @@ export default function Analysis() {
         }
       }
       // All retries exhausted — silently reset to upload state, no toast
-      if (!fnData || fnData.source !== "cipher_vision") {
+      if (!fnData || fnData.source !== "cipher_vision" && fnData.source !== "fallback") {
         setData(null);
         setAnalysisFailed(true);
         toast.error("Analysis timed out. Tap Retry to try again.");
