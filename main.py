@@ -423,9 +423,13 @@ def _extract_person_center_crop(image_b64: str) -> str:
         
         if _HAS_MEDIAPIPE:
             # Use MediaPipe to segment the person
-            cv_img = cv2.cvtColor(cv2.imdecode(
-                np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
-            mp_selfie = mp.solutions.selfie_segmentation
+            cv_decoded = cv2.imdecode(
+                np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            if cv_decoded is None:
+                _log.warning("[MASK] cv2.imdecode returned None, skipping segmentation")
+                raise ValueError("imdecode failed")
+            cv_img = cv2.cvtColor(cv_decoded, cv2.COLOR_BGR2RGB)
+            mp_selfie = mp.solutions.selfie_segmentation  # type: ignore
             with mp_selfie.SelfieSegmentation(model_selection=1) as segmenter:
                 results = segmenter.process(cv_img)
                 if results and results.segmentation_mask is not None:
@@ -445,7 +449,7 @@ def _extract_person_center_crop(image_b64: str) -> str:
                         h = min(cv_img.shape[0] - y, h + 2 * pad_y)
                         cropped = masked[y:y+h, x:x+w]
                         # Convert back to PIL
-                        img = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR))
+                        img = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR))  # type: ignore[arg-type]
         
         # Fallback: center-crop to square (removes edges where background dominates)
         w, h = img.size
