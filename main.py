@@ -19,6 +19,7 @@ import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from PIL import Image
+from collections import Counter
 from dotenv import load_dotenv
 
 # Qdrant + Vercel Blob
@@ -31,9 +32,9 @@ except ImportError:
 try:
     from vercel_blob import put as blob_put
 except ImportError:
-    blob_put = None  # type: ignore[assignment]
+    blob_put = None  # type: ignore[import,assignment]
 try:
-    from pypdf import PdfReader
+    from pypdf import PdfReader  # type: ignore[import]
 except ImportError:
     PdfReader = None  # type: ignore[assignment]
 
@@ -574,11 +575,10 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
         pixels = [p for p in img.getdata()]
         
         # Simple color quantization using average of similar pixels
-        from collections import Counter
         # Quantize to 32-color buckets
         quantized = [(r // 32 * 32, g // 32 * 32, b // 32 * 32) for r, g, b in pixels]
         color_counts = Counter(quantized)
-        top_pixels = [c[0] for c in color_counts.most_common(num_colors + 3)]
+        top_pixels = [item[0] for item in color_counts.most_common(num_colors + 3)]
         
         # Match each dominant pixel to closest color name in dictionary
         matched_colors = []
@@ -636,7 +636,6 @@ def _extract_image_features(image_b64: str) -> str:
         pixels = list(img_small.getdata())  # type: ignore[arg-type]
         
         # Find dominant colors using simple quantization
-        from collections import Counter
         # Quantize to 16 colors
         quantized = []
         for r, g, b in pixels:
@@ -695,7 +694,7 @@ def _extract_image_features(image_b64: str) -> str:
         
         # Simple brightness analysis
         gray = img.convert('L')
-        raw_pixels = [p for p in gray.getdata()]  # type: ignore[arg-type]
+        raw_pixels = [p for p in gray.getdata()]
         avg_brightness = sum(raw_pixels) / len(raw_pixels)
         features.append(f"Average brightness: {avg_brightness:.0f}/255")
         
@@ -1136,7 +1135,7 @@ def upload_color_pdf():
     
     try:
         pdf_bytes = file.read()
-        reader = PdfReader(io.BytesIO(pdf_bytes))
+        reader = PdfReader(io.BytesIO(pdf_bytes))  # type: ignore[operator]
         extracted_text = ""
         for page in reader.pages:
             text = page.extract_text()
@@ -1232,7 +1231,7 @@ def upload_color_pdf():
     
     try:
         pdf_bytes = file.read()
-        reader = PdfReader(io.BytesIO(pdf_bytes))
+        reader = PdfReader(io.BytesIO(pdf_bytes))  # type: ignore[operator]
         extracted_text = ""
         for page in reader.pages:
             text = page.extract_text()
