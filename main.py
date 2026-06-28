@@ -266,7 +266,9 @@ def _get_qdrant_closet() -> Optional[QdrantClient]:
             _qdrant_closet = None
     return _qdrant_closet
 
-def _ensure_closet_collection(client: QdrantClient):
+def _ensure_closet_collection(client: Optional[QdrantClient]):
+    if client is None or qdrant_models is None:
+        return
     try:
         collections = client.get_collections()
         names = [c.name for c in collections.collections]
@@ -297,7 +299,7 @@ def qdrant_get_all_items() -> List[Dict[str, Any]]:
 
 def qdrant_upsert_item(item: Dict[str, Any]) -> bool:
     client = _get_qdrant_closet()
-    if not client:
+    if not client or qdrant_models is None:
         return False
     try:
         point_id = item.get("id", str(uuid.uuid4())[:8])
@@ -316,7 +318,7 @@ def qdrant_upsert_item(item: Dict[str, Any]) -> bool:
 
 def qdrant_delete_item(item_id: str) -> bool:
     client = _get_qdrant_closet()
-    if not client:
+    if not client or qdrant_models is None:
         return False
     try:
         client.delete(
@@ -334,7 +336,7 @@ def qdrant_delete_item(item_id: str) -> bool:
 
 def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
     client = _get_qdrant_closet()
-    if not client:
+    if not client or qdrant_models is None:
         return None
     try:
         result = client.scroll(
@@ -1103,6 +1105,8 @@ def upload_color_pdf():
     
     try:
         pdf_bytes = file.read()
+        if PdfReader is None:
+            return jsonify({"success": False, "error": "pypdf not installed"}), 500
         reader = PdfReader(io.BytesIO(pdf_bytes))
         extracted_text = ""
         for page in reader.pages:
