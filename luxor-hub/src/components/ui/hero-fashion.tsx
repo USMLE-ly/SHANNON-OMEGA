@@ -68,7 +68,7 @@ export function FashionHero({
                 />
                 {/* Score ring overlaid top-right */}
                 {!isNA && (
-                  <div className="absolute top-4 right-4 z-10 drop-shadow-lg bg-black/20 backdrop-blur-sm rounded-full p-1">
+                  <div className="absolute top-2 right-2 z-10 drop-shadow-lg bg-black/20 backdrop-blur-sm rounded-full p-0.5">
                     <div className="relative w-20 h-20 md:w-24 md:h-24">
                       <svg width="100%" height="100%" viewBox="0 0 100 100" className="-rotate-90">
                         <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="6" />
