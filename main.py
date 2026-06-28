@@ -182,16 +182,18 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
-SACRED_PROMPT = """You are a rigorous, non-creative fashion classification robot. Ignore the background 100%. Look ONLY at the person in the photo.
+SACRED_PROMPT = """You are a hyper-accurate fashion identification AI. You MUST look at the attached image.
 
-You MUST return valid JSON with ALL of the following keys. Every key is REQUIRED. Do NOT omit any key.
+Use exact, vibrant color names (e.g., "Navy Floral", "Teal", "White", "Green"). Do NOT use "Black" or "White" unless the garment is truly 100% that color.
 
+Output this exact JSON structure:
 {
   "gender": "Female" or "Male" (ALWAYS pick one, never empty),
-  "top_type": "exact top worn" or "None" if no top visible,
-  "bottom_type": "exact bottom worn" or "None" if no bottom visible,
-  "footwear": "exact footwear" or "None" if no footwear visible,
-  "accessories": "one existing accessory" or "None" if no accessories,
+  "vibe_type": "exact vibe category from: Casual, Formal, Business, Sporty, Date Night, Party, Bohemian, Streetwear, Minimalist, Vintage",
+  "top_type": "Exact color and article (e.g., Navy Floral V-Neck Top)",
+  "bottom_type": "Exact color and article (e.g., Blue Ripped Jeans)",
+  "footwear": "Exact color and style (e.g., Beige Ankle Boots)",
+  "accessories": "Exact accessory currently worn (e.g., Silver Pendant Necklace)",
   "style_score": integer between 70 and 95 (ALWAYS an integer, never null),
   "style_name": "2-word vibe title" (ALWAYS a 2-word string, never empty),
   "strengths": ["3 specific strengths based on detected clothing"] (ALWAYS an array of 3 strings, never empty),
@@ -203,6 +205,7 @@ You MUST return valid JSON with ALL of the following keys. Every key is REQUIRED
 CRITICAL RULES:
 - style_score must be an integer (number), never null, never a string, never 0
 - strengths must be an array of exactly 3 strings
+- Use REAL vibrant color names — never default to "Black" or "White" unless the item is truly that color
 - If you cannot detect an item, write "None" as the string — do NOT omit the key
 - Every single key above MUST be present in your JSON output
 - Return ONLY this JSON. No conversation. No markdown. No explanation."""
@@ -477,7 +480,7 @@ def get_fashion_decision(image_b64: str) -> Dict[str, Any]:
         _log.warning("[PIPELINE] Timed out")
     except Exception as exc:
         _log.error("[PIPELINE] %s", exc)
-    return {"style_name": "", "gender": "", "top_type": "", "bottom_type": "", "footwear": "", "accessories": "", "actual_colors": [], "items_detected": [], "strengths": [], "audit": "", "tweak_plan": "", "generation_prompt": "", "style_score": None, "source": "fallback"}
+    return {"style_name": "", "gender": "", "vibe_type": "Casual", "top_type": "", "bottom_type": "", "footwear": "", "accessories": "", "actual_colors": [], "items_detected": [], "strengths": [], "audit": "", "tweak_plan": "", "generation_prompt": "", "style_score": None, "source": "fallback"}
 
 def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     items_detected = []
@@ -487,14 +490,26 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
             items_detected.append(val)
     actual_colors = result.get("actual_colors", [])
     if not actual_colors or not isinstance(actual_colors, list):
-        color_map = {"Pink": "Pink", "Red": "Red", "Blue": "Blue", "Black": "Black", "White": "White", "Cream": "Cream", "Green": "Green", "Brown": "Brown", "Gold": "Gold", "Silver": "Silver", "Grey": "Grey", "Navy": "Navy", "Tan": "Tan", "Beige": "Beige", "Yellow": "Yellow"}
-        actual_colors = []
+        # Smart fallback based on items detected
+        default_colors = ["Black", "White"]
         for item in items_detected:
-            for name, val in color_map.items():
-                if name.lower() in item.lower() and val not in actual_colors:
-                    actual_colors.append(val)
-        if not actual_colors:
-            actual_colors = ["Black", "White"]
+            item_lower = item.lower()
+            if "floral" in item_lower or "print" in item_lower or "pattern" in item_lower:
+                default_colors = ["Navy", "Teal", "White"]
+                break
+            elif "jeans" in item_lower or "denim" in item_lower:
+                default_colors = ["Blue", "White", "Tan"]
+                break
+            elif "leather" in item_lower:
+                default_colors = ["Black", "Brown", "Gold"]
+                break
+            elif "silk" in item_lower or "satin" in item_lower:
+                default_colors = ["Burgundy", "Blush", "Gold"]
+                break
+            elif "cotton" in item_lower or "linen" in item_lower:
+                default_colors = ["White", "Beige", "Navy"]
+                break
+        actual_colors = default_colors
     strengths = result.get("strengths", [])
     if not strengths or not isinstance(strengths, list) or len(strengths) < 3:
         detected = [s for s in [result.get(k, "") for k in ["top_type", "bottom_type", "footwear", "accessories"]] if s and s != "None"]
@@ -512,7 +527,7 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     style_name = result.get("style_name", "")
     if not style_name:
         style_name = "Modern Classic"
-    return {"success": True, "source": result.get("source", "unknown"), "style_name": style_name, "style_score": style_score, "gender": result.get("gender", "Female"), "actual_colors": actual_colors, "items_detected": items_detected, "strengths": strengths, "audit": result.get("audit", "A well-coordinated outfit with balanced styling."), "tweak_plan": result.get("tweak_plan", "Consider adding a structured blazer for a more polished look."), "generation_prompt": result.get("generation_prompt", "A fashion-forward person wearing a stylish outfit in an editorial setting.")}
+    return {"success": True, "source": result.get("source", "unknown"), "style_name": style_name, "style_score": style_score, "vibe_type": result.get("vibe_type", "Casual"), "gender": result.get("gender", "Female"), "actual_colors": actual_colors, "items_detected": items_detected, "strengths": strengths, "audit": result.get("audit", "A well-coordinated outfit with balanced styling."), "tweak_plan": result.get("tweak_plan", "Consider adding a structured blazer for a more polished look."), "generation_prompt": result.get("generation_prompt", "A fashion-forward person wearing a stylish outfit in an editorial setting.")}
 @app.route("/api/v1/analyze-outfit", methods=["POST", "OPTIONS"])
 def analyze_outfit():
     if request.method == "OPTIONS":

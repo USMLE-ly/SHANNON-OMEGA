@@ -10,7 +10,25 @@ interface FashionHeroProps {
   audit?: string;
   tweakPlan?: string;
   imageUrl?: string;
+  vibeType?: string;
 }
+
+const colorSwatchMap: Record<string, string> = {
+  "Pink": "bg-pink-500", "Red": "bg-red-500", "Blue": "bg-blue-500",
+  "Black": "bg-gray-900", "White": "bg-white border border-zinc-600",
+  "Cream": "bg-yellow-100", "Green": "bg-green-500", "Brown": "bg-amber-800",
+  "Gold": "bg-yellow-500", "Silver": "bg-gray-300", "Navy": "bg-blue-900",
+  "Tan": "bg-amber-200", "Beige": "bg-amber-100", "Yellow": "bg-yellow-400",
+  "Grey": "bg-gray-400", "Orange": "bg-orange-500", "Teal": "bg-teal-500",
+  "Burgundy": "bg-red-900", "Blush": "bg-pink-200", "Khaki": "bg-amber-200",
+  "Olive": "bg-green-700", "Purple": "bg-purple-600", "Maroon": "bg-red-800",
+};
+
+const vibeEmojis: Record<string, string> = {
+  "Casual": "👕", "Formal": "🤵", "Business": "💼", "Sporty": "🏃",
+  "Date Night": "🌹", "Party": "🎉", "Bohemian": "🌸", "Streetwear": "🧢",
+  "Minimalist": "⬜", "Vintage": "📻",
+};
 
 export function FashionHero({
   styleName = "Your Style",
@@ -21,14 +39,16 @@ export function FashionHero({
   audit = "",
   tweakPlan = "",
   imageUrl,
+  vibeType,
 }: FashionHeroProps) {
   const isNA = styleScore === null || styleScore === undefined || styleScore === 0;
+  const showMindMap = !imageUrl && vibeType;
 
   return (
     <div className="w-full">
       <div className="container mx-auto px-2 py-6 md:py-12">
         <div className="grid md:grid-cols-2 gap-6 relative overflow-x-hidden">
-          {/* Image Side */}
+          {/* Image / Mind Map Side */}
           <div className="md:order-2 relative">
             <div className="absolute -z-10 w-72 h-72 rounded-full bg-purple-500/20 blur-3xl opacity-30 -top-10 -left-10" />
             {imageUrl ? (
@@ -37,11 +57,72 @@ export function FashionHero({
                 alt="Uploaded outfit"
                 className="rounded-2xl shadow-2xl w-full object-cover filter brightness-105 max-h-[500px]"
               />
-            ) : (
-              <div className="rounded-2xl shadow-2xl w-full aspect-[3/4] bg-zinc-800/50 flex items-center justify-center text-muted-foreground">
-                Upload a photo
+            ) : showMindMap ? (
+              /* ---- Style Mind Map & Vibe ---- */
+              <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 backdrop-blur-xl p-6 h-full min-h-[300px] flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🧠</span>
+                  <h3 className="font-bold text-foreground text-sm uppercase tracking-wider">Style Mind Map</h3>
+                </div>
+
+                {/* Vibe Type */}
+                <div className="flex items-center gap-3 bg-zinc-800/40 rounded-xl p-4 border border-zinc-700/40">
+                  <span className="text-3xl">{vibeEmojis[vibeType] || "✨"}</span>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Vibe Classification</p>
+                    <p className="text-lg font-bold gold-text">{vibeType}</p>
+                  </div>
+                </div>
+
+                {/* Style Score Ring */}
+                {!isNA && (
+                  <div className="flex items-center gap-4 bg-zinc-800/40 rounded-xl p-4 border border-zinc-700/40">
+                    <div className="relative w-16 h-16 flex-shrink-0">
+                      <svg width="64" height="64" viewBox="0 0 64 64" className="-rotate-90">
+                        <circle cx="32" cy="32" r="26" fill="none" stroke="hsl(var(--muted))" strokeWidth="4" />
+                        <motion.circle
+                          cx="32" cy="32" r="26" fill="none"
+                          stroke="url(#goldArcMind)" strokeWidth="4" strokeLinecap="round"
+                          strokeDasharray={163.36}
+                          initial={{ strokeDashoffset: 163.36 }}
+                          animate={{ strokeDashoffset: 163.36 - (styleScore! / 100) * 163.36 }}
+                          transition={{ duration: 1.5, ease: "easeOut" }}
+                        />
+                        <defs>
+                          <linearGradient id="goldArcMind" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#C6A55C" />
+                            <stop offset="100%" stopColor="#E8D5A3" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-sm font-bold gold-text">{styleScore}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Style Score</p>
+                      <p className="text-sm text-foreground/80">{styleName}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Breakdown */}
+                <div className="flex-1 bg-zinc-800/40 rounded-xl p-4 border border-zinc-700/40">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Breakdown</p>
+                  {audit && (
+                    <p className="text-sm text-foreground/70 leading-relaxed mb-3">&ldquo;{audit}&rdquo;</p>
+                  )}
+                  {tweakPlan && (
+                    <div className="flex items-start gap-2 text-sm text-purple-400/80">
+                      <span className="text-purple-400 mt-0.5">💡</span>
+                      <span className="italic">{tweakPlan}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            ) : null}
+
+            {/* Absolutely nothing shown when neither imageUrl nor vibeType — no placeholder */}
           </div>
 
           {/* Content Side */}
@@ -59,7 +140,7 @@ export function FashionHero({
                       {!isNA && (
                         <motion.circle
                           cx="50" cy="50" r="42" fill="none"
-                          stroke="url(#goldArc)" strokeWidth="6" strokeLinecap="round"
+                          stroke="url(#goldArc2)" strokeWidth="6" strokeLinecap="round"
                           strokeDasharray={264}
                           initial={{ strokeDashoffset: 264 }}
                           animate={{ strokeDashoffset: 264 - (styleScore! / 100) * 264 }}
@@ -67,7 +148,7 @@ export function FashionHero({
                         />
                       )}
                       <defs>
-                        <linearGradient id="goldArc" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <linearGradient id="goldArc2" x1="0%" y1="0%" x2="100%" y2="100%">
                           <stop offset="0%" stopColor="#C6A55C" />
                           <stop offset="100%" stopColor="#E8D5A3" />
                         </linearGradient>
@@ -100,10 +181,13 @@ export function FashionHero({
 
               {/* Colors */}
               {actualColors.length > 0 && (
-                <div className="flex gap-2 items-center">
+                <div className="flex gap-2 items-center flex-wrap">
                   <span className="text-xs text-muted-foreground uppercase tracking-wider">Colors:</span>
                   {actualColors.map((c, i) => (
-                    <span key={i} className="px-2 py-0.5 rounded-full bg-zinc-800/40 border border-zinc-700/30 text-xs text-foreground/70">{c}</span>
+                    <span key={i} className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-800/40 border border-zinc-700/30 text-xs text-foreground/70">
+                      <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[c] || 'bg-gray-400'}`} />
+                      {c}
+                    </span>
                   ))}
                 </div>
               )}

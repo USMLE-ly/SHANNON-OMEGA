@@ -696,6 +696,8 @@ export default function Analysis() {
                     actualColors={data.actual_colors}
                     audit={data.audit}
                     tweakPlan={data.tweak_plan}
+                    imageUrl={imagePreview}
+                    vibeType={data.vibe_type}
                   />
                 </motion.div>
 
