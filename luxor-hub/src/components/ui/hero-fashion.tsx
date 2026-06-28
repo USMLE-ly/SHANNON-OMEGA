@@ -176,13 +176,29 @@ export function FashionHero({
                 </div>
               </div>
 
-              {/* Items detected - detailed labels */}
+              {/* Items detected - detailed labels with color dots */}
               {(topType || bottomType || footwear) && (
                 <div className="space-y-1.5 text-sm">
-                  {topType && <div className="flex items-center gap-2"><span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Top</span><span className="text-foreground/90">{topType}</span></div>}
-                  {bottomType && <div className="flex items-center gap-2"><span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Bottom</span><span className="text-foreground/90">{bottomType}</span></div>}
-                  {footwear && <div className="flex items-center gap-2"><span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Shoes</span><span className="text-foreground/90">{footwear}</span></div>}
-                  {accessories && <div className="flex items-center gap-2"><span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Acc</span><span className="text-foreground/90">{accessories}</span></div>}
+                  {topType && <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Top</span>
+                    <span className={\`w-2.5 h-2.5 rounded-full inline-block \${colorSwatchMap[topType.split(' ')[0]] || 'bg-gray-400'}\`} />
+                    <span className="text-foreground/90">{topType}</span>
+                  </div>}
+                  {bottomType && <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Bottom</span>
+                    <span className={\`w-2.5 h-2.5 rounded-full inline-block \${colorSwatchMap[bottomType.split(' ')[0]] || 'bg-gray-400'}\`} />
+                    <span className="text-foreground/90">{bottomType}</span>
+                  </div>}
+                  {footwear && <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Shoes</span>
+                    <span className={\`w-2.5 h-2.5 rounded-full inline-block \${colorSwatchMap[footwear.split(' ')[0]] || 'bg-gray-400'}\`} />
+                    <span className="text-foreground/90">{footwear}</span>
+                  </div>}
+                  {accessories && accessories !== "None" && <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Acc</span>
+                    <span className={\`w-2.5 h-2.5 rounded-full inline-block \${colorSwatchMap[accessories.split(' ')[0]] || 'bg-gray-400'}\`} />
+                    <span className="text-foreground/90">{accessories}</span>
+                  </div>}
                 </div>
               )}
               {/* Fallback plain items */}
@@ -196,18 +212,7 @@ export function FashionHero({
                 </div>
               )}
 
-              {/* Colors */}
-              {actualColors.length > 0 && (
-                <div className="flex gap-2 items-center flex-wrap">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Colors:</span>
-                  {actualColors.map((c, i) => (
-                    <span key={i} className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-800/40 border border-zinc-700/30 text-xs text-foreground/70">
-                      <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[c] || 'bg-gray-400'}`} />
-                      {c}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {/* Colors are embedded in each item label below — no standalone section needed */}
 
               {/* Strengths list */}
               <ul className="space-y-2 tracking-tighter text-base text-foreground/80">
