@@ -7,3 +7,6 @@ qdrant-client>=1.12
 vercel-blob
 gunicorn
 pypdf
+mediapipe
+opencv-python-headless
+numpy

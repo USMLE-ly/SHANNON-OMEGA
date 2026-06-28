@@ -20,6 +20,13 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from PIL import Image
 from collections import Counter
+import numpy as np
+try:
+    import cv2
+    import mediapipe as mp
+    _HAS_MEDIAPIPE = True
+except ImportError:
+    _HAS_MEDIAPIPE = False
 from dotenv import load_dotenv
 
 # Qdrant + Vercel Blob
@@ -475,7 +482,11 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
-SACRED_PROMPT = """You are a hyper-accurate fashion identification AI. You MUST look at the attached image.
+SACRED_PROMPT = """You are a hyper-accurate fashion identification AI.
+**CRITICAL DIRECTIVE: IGNORE 100% OF THE BACKGROUND.** Do NOT look at the road, trees, stairs, walls, floor, pavement, or any surroundings.
+Lock your analysis EXCLUSIVELY onto the human subject and their clothing.
+Identify the EXACT garment types. Do NOT invent items — if they are not clearly visible, say "None".
+Use the EXACT color names from the provided list below. Do NOT make up colors.
 
 **CRITICAL COLOR DIRECTIVE:** You MUST use ONLY the following exact color names when describing clothing:
 Acid Wash, Amethyst, Apricot, Aqua, Army Green, Baby Blue, Barbie Pink, Beige, Black, Black Denim, Blue, Blue Denim, Blush, Brick, Bronze, Brown, Bubblegum, Burgundy, Burnt Orange, Butter, Camel, Camo Brown, Camo Green, Canary, Caramel, Champagne, Charcoal, Cherry, Chestnut, Chocolate, Cobalt, Coffee, Copper, Coral, Cornflower, Cotton Candy, Cream, Crimson, Dark Denim, Denim, Dusty Rose, Eggplant, Emerald, Espresso, Forest Green, Fuchsia, Gold, Grape, Green, Grey, Holographic, Honey, Hot Pink, Hunter Green, Indigo, Ivory, Jade, Kelly Green, Khaki, Lace, Lavender, Lemon, Leopard, Light Denim, Lilac, Lime, Magenta, Mahogany, Maroon, Mauve, Melon, Metallic Gold, Metallic Silver, Midnight Blue, Mint, Mocha, Moss, Mustard, Natural Linen, Navy, Neon Green, Neon Yellow, Nude, Nude Blush, Ocean, Ochre, Olive, Orange, Orchid, Patent Leather, Peach, Pearl, Pink, Pistachio, Plum, Powder Blue, Pumpkin, Purple, Raw Denim, Raw Silk, Red, Rose, Rose Gold, Royal Blue, Ruby, Rust, Sage, Salmon, Sapphire, Scarlet, Sea Foam, Sequin, Silver, Sky Blue, Slate, Steel, Steel Blue, Sunflower, Tan, Tangerine, Taupe, Teal, Terra Cotta, Turquoise, Violet, White, White Cotton, Wine, Yellow, Zebra
@@ -535,6 +546,56 @@ REQUIRED_KEYS = [
 # ---------------------------------------------------------------------------
 # Image compression
 # ---------------------------------------------------------------------------
+def _extract_person_center_crop(image_b64: str) -> str:
+    """
+    Use MediaPipe selfie segmentation to mask out background,
+    or fall back to center-cropping the image.
+    Returns a base64-encoded JPEG with background removed/centered.
+    """
+    try:
+        raw = base64.b64decode(image_b64)
+        img = Image.open(io.BytesIO(raw)).convert('RGB')
+        
+        if _HAS_MEDIAPIPE:
+            # Use MediaPipe to segment the person
+            cv_img = cv2.cvtColor(cv2.imdecode(
+                np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+            mp_selfie = mp.solutions.selfie_segmentation
+            with mp_selfie.SelfieSegmentation(model_selection=1) as segmenter:
+                results = segmenter.process(cv_img)
+                if results and results.segmentation_mask is not None:
+                    # Create binary mask
+                    mask = (results.segmentation_mask > 0.5).astype(np.uint8) * 255
+                    # Apply mask to remove background
+                    masked = cv2.bitwise_and(cv_img, cv_img, mask=mask)
+                    # Find bounding box of person
+                    coords = cv2.findNonZero(mask)
+                    if coords is not None:
+                        x, y, w, h = cv2.boundingRect(coords)
+                        # Expand bbox by 10% for context
+                        pad_x, pad_y = int(w * 0.1), int(h * 0.1)
+                        x = max(0, x - pad_x)
+                        y = max(0, y - pad_y)
+                        w = min(cv_img.shape[1] - x, w + 2 * pad_x)
+                        h = min(cv_img.shape[0] - y, h + 2 * pad_y)
+                        cropped = masked[y:y+h, x:x+w]
+                        # Convert back to PIL
+                        img = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR))
+        
+        # Fallback: center-crop to square (removes edges where background dominates)
+        w, h = img.size
+        size = min(w, h)
+        left = (w - size) // 2
+        top = (h - size) // 2
+        img = img.crop((left, top, left + size, top + size))
+        
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception as exc:
+        _log.warning("[MASK] Person segmentation failed: %s", exc)
+        return image_b64
+
 def compress_image_b64(image_b64: str) -> str:
     """Safely compress a base64 image. Handles data-URL headers, missing padding."""
     try:
@@ -717,14 +778,22 @@ def _extract_image_features(image_b64: str) -> str:
 def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, temperature: float = 0.2) -> Optional[Dict[str, Any]]:
     if not MIMO_API_KEY:
         return None
-    compressed = compress_image_b64(image_b64)
+    
+    # Mask out background using person segmentation FIRST
+    masked_b64 = _extract_person_center_crop(image_b64)
+    
+    # Inject color dictionary into the prompt
+    color_list = ", ".join(_COLOR_NAMES) if _COLOR_NAMES else "Black, White, Blue, Red, Green"
+    colored_prompt = system_prompt + f"\n\nValid color names (use ONLY these): {color_list}"
+    
+    compressed = compress_image_b64(masked_b64)
     headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
     
-    # Try vision model with image data
+    # Try vision model with masked image data
     vision_payload = {
         "model": MIMO_VISION_MODEL,
         "messages": [{"role": "user", "content": [
-            {"type": "text", "text": system_prompt},
+            {"type": "text", "text": colored_prompt},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}"}},
         ]}],
         "max_tokens": CIPHER_MAX_TOKENS,
