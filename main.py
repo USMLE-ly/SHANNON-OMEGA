@@ -24,7 +24,8 @@ import numpy as np
 try:
     import cv2
     import mediapipe as mp
-    from mediapipe.solutions.selfie_segmentation import SelfieSegmentation
+    # For mediapipe >=0.10.x, use python.solutions path
+    from mediapipe.python.solutions.selfie_segmentation import SelfieSegmentation
     _HAS_MEDIAPIPE = True
 except ImportError:
     cv2: Any = None
