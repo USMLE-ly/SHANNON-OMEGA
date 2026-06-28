@@ -73,6 +73,294 @@ _log.info("Blob token: %s", bool(BLOB_READ_WRITE_TOKEN))
 _log.info("Qdrant: %s", bool(QDRANT_URL and QDRANT_API_KEY))
 
 # ---------------------------------------------------------------------------
+# Color Dictionary
+# ---------------------------------------------------------------------------
+_COLOR_MAPPINGS = {}
+_COLOR_DICT_PATH = os.path.join(BASE_DIR, "color_dictionary.json")
+_COLOR_NAMES = []
+
+def _load_color_dictionary():
+    global _COLOR_MAPPINGS, _COLOR_NAMES
+    try:
+        if os.path.exists(_COLOR_DICT_PATH):
+            with open(_COLOR_DICT_PATH) as f:
+                _COLOR_MAPPINGS = json.load(f)
+        else:
+            # Built-in fashion color dictionary
+            _COLOR_MAPPINGS = {
+  "Black": "#000000",
+  "White": "#FFFFFF",
+  "Cream": "#FFFDD0",
+  "Ivory": "#FFFFF0",
+  "Beige": "#F5F5DC",
+  "Tan": "#D2B48C",
+  "Khaki": "#C3B091",
+  "Camel": "#C19A6B",
+  "Grey": "#808080",
+  "Charcoal": "#36454F",
+  "Silver": "#C0C0C0",
+  "Steel": "#71797E",
+  "Navy": "#000080",
+  "Midnight Blue": "#191970",
+  "Slate": "#708090",
+  "Blue": "#0000FF",
+  "Royal Blue": "#4169E1",
+  "Sky Blue": "#87CEEB",
+  "Baby Blue": "#89CFF0",
+  "Powder Blue": "#B0E0E6",
+  "Teal": "#008080",
+  "Turquoise": "#40E0D0",
+  "Aqua": "#00FFFF",
+  "Cobalt": "#0047AB",
+  "Denim": "#1560BD",
+  "Indigo": "#4B0082",
+  "Cornflower": "#6495ED",
+  "Steel Blue": "#4682B4",
+  "Ocean": "#0077BE",
+  "Sapphire": "#0F52BA",
+  "Red": "#FF0000",
+  "Crimson": "#DC143C",
+  "Maroon": "#800000",
+  "Burgundy": "#800020",
+  "Wine": "#722F37",
+  "Brick": "#CB4154",
+  "Rose": "#FF007F",
+  "Ruby": "#E0115F",
+  "Scarlet": "#FF2400",
+  "Cherry": "#DE3163",
+  "Rust": "#B7410E",
+  "Terra Cotta": "#E2725B",
+  "Coral": "#FF7F50",
+  "Salmon": "#FA8072",
+  "Blush": "#DE5D83",
+  "Mauve": "#E0B0FF",
+  "Pink": "#FFC0CB",
+  "Hot Pink": "#FF69B4",
+  "Magenta": "#FF00FF",
+  "Fuchsia": "#FF00FF",
+  "Rose Gold": "#B76E79",
+  "Dusty Rose": "#C9A9A6",
+  "Barbie Pink": "#DA1884",
+  "Cotton Candy": "#FFBCD9",
+  "Bubblegum": "#FFC3CD",
+  "Purple": "#800080",
+  "Lavender": "#E6E6FA",
+  "Lilac": "#C8A2C8",
+  "Violet": "#8F00FF",
+  "Plum": "#673147",
+  "Eggplant": "#614051",
+  "Orchid": "#DA70D6",
+  "Amethyst": "#9966CC",
+  "Grape": "#6F2DA8",
+  "Green": "#008000",
+  "Forest Green": "#228B22",
+  "Olive": "#808000",
+  "Sage": "#BCB88A",
+  "Mint": "#98FF98",
+  "Emerald": "#50C878",
+  "Jade": "#00A86B",
+  "Hunter Green": "#355E3B",
+  "Lime": "#00FF00",
+  "Neon Green": "#39FF14",
+  "Pistachio": "#93C572",
+  "Kelly Green": "#4CBB17",
+  "Army Green": "#4B5320",
+  "Moss": "#8A9A5B",
+  "Sea Foam": "#9FE2BF",
+  "Yellow": "#FFFF00",
+  "Gold": "#FFD700",
+  "Mustard": "#FFDB58",
+  "Lemon": "#FFF700",
+  "Canary": "#FFFF99",
+  "Sunflower": "#FFDA03",
+  "Ochre": "#CC7722",
+  "Butter": "#FFF9B0",
+  "Neon Yellow": "#CCFF00",
+  "Honey": "#FFC30B",
+  "Orange": "#FFA500",
+  "Tangerine": "#FF9966",
+  "Peach": "#FFCBA4",
+  "Apricot": "#FBCEB1",
+  "Burnt Orange": "#CC5500",
+  "Melon": "#FEBAAD",
+  "Pumpkin": "#FF7518",
+  "Brown": "#A52A2A",
+  "Chocolate": "#7B3F00",
+  "Coffee": "#6F4E37",
+  "Chestnut": "#954535",
+  "Taupe": "#483C32",
+  "Mocha": "#967969",
+  "Caramel": "#AF6F4C",
+  "Espresso": "#4E2A26",
+  "Mahogany": "#C04000",
+  "Bronze": "#CD7F32",
+  "Copper": "#B87333",
+  "Nude": "#E3BC9A",
+  "Nude Blush": "#D5A98A",
+  "Champagne": "#F7E7CE",
+  "Pearl": "#F0EAD6",
+  "Sequin": "#E8E8E8",
+  "Lace": "#F9F6EE",
+  "Patent Leather": "#1C1C1C",
+  "Metallic Silver": "#C0C0C0",
+  "Metallic Gold": "#D4AF37",
+  "Holographic": "#E8E4F0",
+  "Leopard": "#D4A373",
+  "Zebra": "#E8E8E8",
+  "Camo Green": "#4A5D23",
+  "Camo Brown": "#5C4033",
+  "Blue Denim": "#1560BD",
+  "Light Denim": "#5D8AA8",
+  "Dark Denim": "#1C3F60",
+  "Raw Denim": "#4A6E8A",
+  "Acid Wash": "#9FB6D4",
+  "Black Denim": "#1A1A1A",
+  "White Cotton": "#F5F5F0",
+  "Natural Linen": "#FAF0E6",
+  "Raw Silk": "#FDF5E6"
+}
+            with open(_COLOR_DICT_PATH, 'w') as f:
+                json.dump(_COLOR_MAPPINGS, f, indent=2)
+        _COLOR_NAMES = sorted(_COLOR_MAPPINGS.keys())
+        _log.info("[COLOR] Loaded %d color names", len(_COLOR_NAMES))
+    except Exception as exc:
+        _log.warning("[COLOR] Load error: %s", exc)
+        _COLOR_MAPPINGS = {
+  "Black": "#000000",
+  "White": "#FFFFFF",
+  "Cream": "#FFFDD0",
+  "Ivory": "#FFFFF0",
+  "Beige": "#F5F5DC",
+  "Tan": "#D2B48C",
+  "Khaki": "#C3B091",
+  "Camel": "#C19A6B",
+  "Grey": "#808080",
+  "Charcoal": "#36454F",
+  "Silver": "#C0C0C0",
+  "Steel": "#71797E",
+  "Navy": "#000080",
+  "Midnight Blue": "#191970",
+  "Slate": "#708090",
+  "Blue": "#0000FF",
+  "Royal Blue": "#4169E1",
+  "Sky Blue": "#87CEEB",
+  "Baby Blue": "#89CFF0",
+  "Powder Blue": "#B0E0E6",
+  "Teal": "#008080",
+  "Turquoise": "#40E0D0",
+  "Aqua": "#00FFFF",
+  "Cobalt": "#0047AB",
+  "Denim": "#1560BD",
+  "Indigo": "#4B0082",
+  "Cornflower": "#6495ED",
+  "Steel Blue": "#4682B4",
+  "Ocean": "#0077BE",
+  "Sapphire": "#0F52BA",
+  "Red": "#FF0000",
+  "Crimson": "#DC143C",
+  "Maroon": "#800000",
+  "Burgundy": "#800020",
+  "Wine": "#722F37",
+  "Brick": "#CB4154",
+  "Rose": "#FF007F",
+  "Ruby": "#E0115F",
+  "Scarlet": "#FF2400",
+  "Cherry": "#DE3163",
+  "Rust": "#B7410E",
+  "Terra Cotta": "#E2725B",
+  "Coral": "#FF7F50",
+  "Salmon": "#FA8072",
+  "Blush": "#DE5D83",
+  "Mauve": "#E0B0FF",
+  "Pink": "#FFC0CB",
+  "Hot Pink": "#FF69B4",
+  "Magenta": "#FF00FF",
+  "Fuchsia": "#FF00FF",
+  "Rose Gold": "#B76E79",
+  "Dusty Rose": "#C9A9A6",
+  "Barbie Pink": "#DA1884",
+  "Cotton Candy": "#FFBCD9",
+  "Bubblegum": "#FFC3CD",
+  "Purple": "#800080",
+  "Lavender": "#E6E6FA",
+  "Lilac": "#C8A2C8",
+  "Violet": "#8F00FF",
+  "Plum": "#673147",
+  "Eggplant": "#614051",
+  "Orchid": "#DA70D6",
+  "Amethyst": "#9966CC",
+  "Grape": "#6F2DA8",
+  "Green": "#008000",
+  "Forest Green": "#228B22",
+  "Olive": "#808000",
+  "Sage": "#BCB88A",
+  "Mint": "#98FF98",
+  "Emerald": "#50C878",
+  "Jade": "#00A86B",
+  "Hunter Green": "#355E3B",
+  "Lime": "#00FF00",
+  "Neon Green": "#39FF14",
+  "Pistachio": "#93C572",
+  "Kelly Green": "#4CBB17",
+  "Army Green": "#4B5320",
+  "Moss": "#8A9A5B",
+  "Sea Foam": "#9FE2BF",
+  "Yellow": "#FFFF00",
+  "Gold": "#FFD700",
+  "Mustard": "#FFDB58",
+  "Lemon": "#FFF700",
+  "Canary": "#FFFF99",
+  "Sunflower": "#FFDA03",
+  "Ochre": "#CC7722",
+  "Butter": "#FFF9B0",
+  "Neon Yellow": "#CCFF00",
+  "Honey": "#FFC30B",
+  "Orange": "#FFA500",
+  "Tangerine": "#FF9966",
+  "Peach": "#FFCBA4",
+  "Apricot": "#FBCEB1",
+  "Burnt Orange": "#CC5500",
+  "Melon": "#FEBAAD",
+  "Pumpkin": "#FF7518",
+  "Brown": "#A52A2A",
+  "Chocolate": "#7B3F00",
+  "Coffee": "#6F4E37",
+  "Chestnut": "#954535",
+  "Taupe": "#483C32",
+  "Mocha": "#967969",
+  "Caramel": "#AF6F4C",
+  "Espresso": "#4E2A26",
+  "Mahogany": "#C04000",
+  "Bronze": "#CD7F32",
+  "Copper": "#B87333",
+  "Nude": "#E3BC9A",
+  "Nude Blush": "#D5A98A",
+  "Champagne": "#F7E7CE",
+  "Pearl": "#F0EAD6",
+  "Sequin": "#E8E8E8",
+  "Lace": "#F9F6EE",
+  "Patent Leather": "#1C1C1C",
+  "Metallic Silver": "#C0C0C0",
+  "Metallic Gold": "#D4AF37",
+  "Holographic": "#E8E4F0",
+  "Leopard": "#D4A373",
+  "Zebra": "#E8E8E8",
+  "Camo Green": "#4A5D23",
+  "Camo Brown": "#5C4033",
+  "Blue Denim": "#1560BD",
+  "Light Denim": "#5D8AA8",
+  "Dark Denim": "#1C3F60",
+  "Raw Denim": "#4A6E8A",
+  "Acid Wash": "#9FB6D4",
+  "Black Denim": "#1A1A1A",
+  "White Cotton": "#F5F5F0",
+  "Natural Linen": "#FAF0E6",
+  "Raw Silk": "#FDF5E6"
+}
+        _COLOR_NAMES = sorted(_COLOR_MAPPINGS.keys())
+
+_load_color_dictionary()
+# ---------------------------------------------------------------------------
 # Qdrant Closet Client
 # ---------------------------------------------------------------------------
 _qdrant_closet = None
@@ -184,7 +472,10 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 SACRED_PROMPT = """You are a hyper-accurate fashion identification AI. You MUST look at the attached image.
 
-Use exact, vibrant color names (e.g., "Navy Floral", "Teal", "White", "Green"). Do NOT use "Black" or "White" unless the garment is truly 100% that color.
+**CRITICAL COLOR DIRECTIVE:** You MUST use ONLY the following exact color names when describing clothing:
+Acid Wash, Amethyst, Apricot, Aqua, Army Green, Baby Blue, Barbie Pink, Beige, Black, Black Denim, Blue, Blue Denim, Blush, Brick, Bronze, Brown, Bubblegum, Burgundy, Burnt Orange, Butter, Camel, Camo Brown, Camo Green, Canary, Caramel, Champagne, Charcoal, Cherry, Chestnut, Chocolate, Cobalt, Coffee, Copper, Coral, Cornflower, Cotton Candy, Cream, Crimson, Dark Denim, Denim, Dusty Rose, Eggplant, Emerald, Espresso, Forest Green, Fuchsia, Gold, Grape, Green, Grey, Holographic, Honey, Hot Pink, Hunter Green, Indigo, Ivory, Jade, Kelly Green, Khaki, Lace, Lavender, Lemon, Leopard, Light Denim, Lilac, Lime, Magenta, Mahogany, Maroon, Mauve, Melon, Metallic Gold, Metallic Silver, Midnight Blue, Mint, Mocha, Moss, Mustard, Natural Linen, Navy, Neon Green, Neon Yellow, Nude, Nude Blush, Ocean, Ochre, Olive, Orange, Orchid, Patent Leather, Peach, Pearl, Pink, Pistachio, Plum, Powder Blue, Pumpkin, Purple, Raw Denim, Raw Silk, Red, Rose, Rose Gold, Royal Blue, Ruby, Rust, Sage, Salmon, Sapphire, Scarlet, Sea Foam, Sequin, Silver, Sky Blue, Slate, Steel, Steel Blue, Sunflower, Tan, Tangerine, Taupe, Teal, Terra Cotta, Turquoise, Violet, White, White Cotton, Wine, Yellow, Zebra
+
+Do NOT invent colors outside this list. Look EXCLUSIVELY at the person's clothing, ignore all background (stairs, walls, floors, furniture). If an item is multicolored, describe the dominant color first.
 
 Output this exact JSON structure:
 {
@@ -265,6 +556,72 @@ def compress_image_b64(image_b64: str) -> str:
 # ---------------------------------------------------------------------------
 # Groq API calls
 # ---------------------------------------------------------------------------
+def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> List[str]:
+    """
+    Extract dominant color names from image pixels using centroid matching.
+    Returns color names from _COLOR_MAPPINGS that best match the actual pixels.
+    """
+    global _COLOR_MAPPINGS, _COLOR_NAMES
+    try:
+        raw = base64.b64decode(image_b64)
+        img = Image.open(io.BytesIO(raw))
+        # Resize for speed
+        img = img.resize((64, 96), Image.Resampling.LANCZOS)
+        pixels = list(img.getdata())
+        
+        # Simple color quantization using average of similar pixels
+        from collections import Counter
+        # Quantize to 32-color buckets
+        quantized = [(r // 32 * 32, g // 32 * 32, b // 32 * 32) for r, g, b in pixels]
+        color_counts = Counter(quantized)
+        top_pixels = [c[0] for c in color_counts.most_common(num_colors + 3)]
+        
+        # Match each dominant pixel to closest color name in dictionary
+        matched_colors = []
+        for r, g, b in top_pixels:
+            best_name = None
+            best_dist = float('inf')
+            for name, hex_code in _COLOR_MAPPINGS.items():
+                hex_code = hex_code.lstrip('#')
+                cr, cg, cb = int(hex_code[0:2], 16), int(hex_code[2:4], 16), int(hex_code[4:6], 16)
+                # Weighted Euclidean distance (human perception weighting)
+                dist = ((r - cr) ** 2 * 0.3 + (g - cg) ** 2 * 0.59 + (b - cb) ** 2 * 0.11) ** 0.5
+                if dist < best_dist:
+                    best_dist = dist
+                    best_name = name
+            if best_name and best_dist < 120:  # Only accept if reasonably close
+                matched_colors.append(best_name)
+        
+        # Deduplicate while preserving order
+        seen = set()
+        unique_colors = []
+        for c in matched_colors:
+            if c not in seen:
+                seen.add(c)
+                unique_colors.append(c)
+        
+        return unique_colors[:num_colors]
+    except Exception as exc:
+        _log.warning("[PIXEL] Error: %s", exc)
+        return []
+
+def _validate_colors_with_pixels(ai_colors: List[str], pixel_colors: List[str]) -> List[str]:
+    """
+    If the AI hallucinated colors that don't match pixel analysis, override with pixel results.
+    """
+    if not pixel_colors:
+        return ai_colors
+    if not ai_colors:
+        return pixel_colors
+    # Use pixel colors as truth, but keep AI's colors if they somewhat match
+    # Simple approach: if AI returned very generic colors (Black/White) but pixels found specific ones, use pixels
+    generic = {"black", "white", "grey", "gray", "beige"}
+    ai_set = {c.lower() for c in ai_colors}
+    if ai_set.issubset(generic) and len(pixel_colors) >= 2:
+        _log.info("[COLOR] Overriding generic AI colors with pixel-detected: %s", pixel_colors)
+        return pixel_colors
+    return ai_colors
+
 def _extract_image_features(image_b64: str) -> str:
     """Extract color/features from image locally, return text description."""
     try:
@@ -468,6 +825,9 @@ def upload_image_to_blob(image_b64: str, prefix: str = "closet") -> Optional[str
         return None
 
 # ---------------------------------------------------------------------------
+# Global cache for pixel analysis
+_image_b64_cache = ""
+
 # Fashion Decision
 # ---------------------------------------------------------------------------
 def get_fashion_decision(image_b64: str) -> Dict[str, Any]:
@@ -490,6 +850,15 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
             items_detected.append(val)
     actual_colors = result.get("actual_colors", [])
     if not actual_colors or not isinstance(actual_colors, list):
+        actual_colors = []
+    
+    # Validate AI colors against actual pixel data
+    global _image_b64_cache
+    pixel_colors = _get_dominant_colors_from_pixels(_image_b64_cache) if _image_b64_cache else []
+    if pixel_colors:
+        actual_colors = _validate_colors_with_pixels(actual_colors, pixel_colors)
+    
+    if not actual_colors:
         # Smart fallback based on items detected
         default_colors = ["Black", "White"]
         for item in items_detected:
@@ -536,6 +905,8 @@ def analyze_outfit():
     image_b64 = data.get("image_b64")
     if not image_b64:
         return jsonify({"error": "Missing image_b64"}), 400
+    global _image_b64_cache
+    _image_b64_cache = image_b64
     try:
         result = get_fashion_decision(image_b64)
         return jsonify(map_analysis(result))
@@ -741,6 +1112,200 @@ def dressing_generate():
     })
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Color Book PDF Upload
+# ---------------------------------------------------------------------------
+@app.route("/api/v1/upload-color-pdf", methods=["POST", "OPTIONS"])
+def upload_color_pdf():
+    if request.method == "OPTIONS":
+        return "", 204
+    
+    global _COLOR_MAPPINGS, _COLOR_NAMES
+    
+    # Check if file was uploaded
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded. Use multipart form with field 'file'."}), 400
+    
+    file = request.files["file"]
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        return jsonify({"success": False, "error": "File must be a PDF."}), 400
+    
+    try:
+        pdf_bytes = file.read()
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        extracted_text = ""
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                extracted_text += text + "\n"
+        
+        if not extracted_text.strip():
+            return jsonify({
+                "success": False, 
+                "error": "Could not extract text from PDF. It may be a scanned image PDF.",
+                "note": "The built-in color dictionary with 130 fashion colors is already loaded."
+            }), 400
+        
+        # Try to parse color patterns: "ColorName: #HEX" or "Color Name (#HEX)" or similar
+        import re as _re
+        found_colors = {}
+        
+        # Pattern 1: "ColorName: #HEX" or "ColorName - #HEX"
+        for match in _re.finditer(r'([A-Za-z]+(?:\s+[A-Za-z]+)*)\s*[:\-]\s*#([0-9A-Fa-f]{6})', extracted_text):
+            name = match.group(1).strip()
+            hex_code = "#" + match.group(2).upper()
+            if name and len(name) > 1:
+                found_colors[name] = hex_code
+        
+        # Pattern 2: "#HEX ColorName" 
+        if not found_colors:
+            for match in _re.finditer(r'#([0-9A-Fa-f]{6})\\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)', extracted_text):
+                hex_code = "#" + match.group(1).upper()
+                name = match.group(2).strip()
+                if name and len(name) > 1:
+                    found_colors[name] = hex_code
+        
+        # Pattern 3: Lines with hex codes and color names
+        if not found_colors:
+            for match in _re.finditer(r'([A-Za-z]+(?:\s+[A-Za-z]+)*)[,\s]+#([0-9A-Fa-f]{6})', extracted_text):
+                name = match.group(1).strip()
+                hex_code = "#" + match.group(2).upper()
+                if name and len(name) > 1:
+                    found_colors[name] = hex_code
+        
+        if found_colors:
+            # Merge with existing dictionary
+            _COLOR_MAPPINGS.update(found_colors)
+            _COLOR_NAMES = sorted(_COLOR_MAPPINGS.keys())
+            with open(_COLOR_DICT_PATH, 'w') as f:
+                json.dump(_COLOR_MAPPINGS, f, indent=2)
+            _log.info("[COLOR] Added %d colors from PDF, total: %d", len(found_colors), len(_COLOR_NAMES))
+            return jsonify({
+                "success": True,
+                "message": f"Extracted {len(found_colors)} color names from PDF.",
+                "colors": list(found_colors.keys()),
+                "total_colors": len(_COLOR_NAMES)
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Could not find color patterns (e.g., 'ColorName: #HEX') in PDF text.",
+                "extracted_preview": extracted_text[:500],
+                "note": "The built-in color dictionary with 130 fashion colors is already loaded."
+            }), 400
+            
+    except Exception as exc:
+        _log.error("[COLOR-PDF] Upload error: %s", exc)
+        return jsonify({"success": False, "error": f"PDF processing error: {str(exc)}"}), 500
+
+@app.route("/api/v1/color-dictionary", methods=["GET", "OPTIONS"])
+def get_color_dictionary():
+    if request.method == "OPTIONS":
+        return "", 204
+    return jsonify({
+        "success": True,
+        "total_colors": len(_COLOR_NAMES),
+        "colors": _COLOR_NAMES,
+        "mappings": _COLOR_MAPPINGS
+    })
+
+# ---------------------------------------------------------------------------
+# Color Book PDF Upload
+# ---------------------------------------------------------------------------
+@app.route("/api/v1/upload-color-pdf", methods=["POST", "OPTIONS"])
+def upload_color_pdf():
+    if request.method == "OPTIONS":
+        return "", 204
+    
+    global _COLOR_MAPPINGS, _COLOR_NAMES
+    
+    # Check if file was uploaded
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded. Use multipart form with field 'file'."}), 400
+    
+    file = request.files["file"]
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        return jsonify({"success": False, "error": "File must be a PDF."}), 400
+    
+    try:
+        pdf_bytes = file.read()
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        extracted_text = ""
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                extracted_text += text + "\n"
+        
+        if not extracted_text.strip():
+            return jsonify({
+                "success": False, 
+                "error": "Could not extract text from PDF. It may be a scanned image PDF.",
+                "note": "The built-in color dictionary with 130 fashion colors is already loaded."
+            }), 400
+        
+        # Try to parse color patterns: "ColorName: #HEX" or "Color Name (#HEX)" or similar
+        import re as _re
+        found_colors = {}
+        
+        # Pattern 1: "ColorName: #HEX" or "ColorName - #HEX"
+        for match in _re.finditer(r'([A-Za-z]+(?:\s+[A-Za-z]+)*)\s*[:\-]\s*#([0-9A-Fa-f]{6})', extracted_text):
+            name = match.group(1).strip()
+            hex_code = "#" + match.group(2).upper()
+            if name and len(name) > 1:
+                found_colors[name] = hex_code
+        
+        # Pattern 2: "#HEX ColorName" 
+        if not found_colors:
+            for match in _re.finditer(r'#([0-9A-Fa-f]{6})\\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)', extracted_text):
+                hex_code = "#" + match.group(1).upper()
+                name = match.group(2).strip()
+                if name and len(name) > 1:
+                    found_colors[name] = hex_code
+        
+        # Pattern 3: Lines with hex codes and color names
+        if not found_colors:
+            for match in _re.finditer(r'([A-Za-z]+(?:\s+[A-Za-z]+)*)[,\s]+#([0-9A-Fa-f]{6})', extracted_text):
+                name = match.group(1).strip()
+                hex_code = "#" + match.group(2).upper()
+                if name and len(name) > 1:
+                    found_colors[name] = hex_code
+        
+        if found_colors:
+            # Merge with existing dictionary
+            _COLOR_MAPPINGS.update(found_colors)
+            _COLOR_NAMES = sorted(_COLOR_MAPPINGS.keys())
+            with open(_COLOR_DICT_PATH, 'w') as f:
+                json.dump(_COLOR_MAPPINGS, f, indent=2)
+            _log.info("[COLOR] Added %d colors from PDF, total: %d", len(found_colors), len(_COLOR_NAMES))
+            return jsonify({
+                "success": True,
+                "message": f"Extracted {len(found_colors)} color names from PDF.",
+                "colors": list(found_colors.keys()),
+                "total_colors": len(_COLOR_NAMES)
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Could not find color patterns (e.g., 'ColorName: #HEX') in PDF text.",
+                "extracted_preview": extracted_text[:500],
+                "note": "The built-in color dictionary with 130 fashion colors is already loaded."
+            }), 400
+            
+    except Exception as exc:
+        _log.error("[COLOR-PDF] Upload error: %s", exc)
+        return jsonify({"success": False, "error": f"PDF processing error: {str(exc)}"}), 500
+
+@app.route("/api/v1/color-dictionary", methods=["GET", "OPTIONS"])
+def get_color_dictionary():
+    if request.method == "OPTIONS":
+        return "", 204
+    return jsonify({
+        "success": True,
+        "total_colors": len(_COLOR_NAMES),
+        "colors": _COLOR_NAMES,
+        "mappings": _COLOR_MAPPINGS
+    })
+
 # Debug & Health
 # ---------------------------------------------------------------------------
 @app.route("/debug/analyze", methods=["POST"])

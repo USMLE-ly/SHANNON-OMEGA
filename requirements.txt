@@ -6,3 +6,4 @@ Pillow
 qdrant-client>=1.12
 vercel-blob
 gunicorn
+pypdf
