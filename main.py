@@ -358,52 +358,10 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
     features = _extract_image_features(image_b64)
     _log.info("[FEATURES] Extracted: %s", features[:100])
     
-    # Try vision model first (works from non-Replit IPs)
-    models_to_try = [OPENROUTER_MODEL]
-    last_error = None
-    
-    for model in models_to_try:
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": [
-                {"type": "text", "text": system_prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}},
-            ]}],
-            "max_tokens": CIPHER_MAX_TOKENS,
-            "temperature": temperature,
-        }
-        try:
-            _log.info("[OPENROUTER-VISION] Trying model=%s", model)
-            resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
-            _log.info("[OPENROUTER-VISION] HTTP %s for %s", resp.status_code, model)
-            
-            if resp.status_code == 200:
-                raw = resp.json()["choices"][0]["message"]["content"]
-                match = re.search(r"\{[\s\S]*\}", raw)
-                if match:
-                    return json.loads(match.group(0))
-            elif resp.status_code == 429:
-                _log.warning("[OPENROUTER-VISION] Rate limited on %s", model)
-                last_error = "rate_limited"
-                continue
-            else:
-                _log.error("[OPENROUTER-VISION] HTTP %s from %s: %s", resp.status_code, model, resp.text[:200])
-                last_error = f"http_{resp.status_code}"
-                continue
-        except requests.exceptions.Timeout:
-            _log.error("[OPENROUTER-VISION] TIMEOUT on %s", model)
-            last_error = "timeout"
-            continue
-        except Exception as exc:
-            _log.error("[OPENROUTER-VISION] %s on %s", exc, model)
-            last_error = str(exc)
-            continue
-    
-    # Fallback: Use text model with extracted features
-    _log.warning("[OPENROUTER-VISION] Vision models failed, using text fallback with features")
+    # Use text model with extracted features (gemma-4 is text-only, no vision)
     text_prompt = f"""{system_prompt}
 
-IMPORTANT: The image could not be processed by vision API. Use these EXTRACTED IMAGE FEATURES instead:
+IMPORTANT: Analyze these EXTRACTED IMAGE FEATURES as if you were seeing the photo:
 
 {features}
 
@@ -433,8 +391,6 @@ Return the SAME JSON format as requested above. If unsure about specific items, 
             _log.error("[OPENROUTER-VISION-FALLBACK] %s on %s", exc, model)
             continue
     
-    if last_error:
-        _log.error("[OPENROUTER-VISION] All models failed, last error: %s", last_error)
     return None
 
 def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Optional[Dict[str, Any]]:
