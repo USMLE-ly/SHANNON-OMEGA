@@ -27,9 +27,9 @@ try:
     from mediapipe.solutions.selfie_segmentation import SelfieSegmentation
     _HAS_MEDIAPIPE = True
 except ImportError:
-    cv2 = None  # type: ignore[assignment]
-    mp = None  # type: ignore[assignment]
-    SelfieSegmentation = None  # type: ignore[assignment]
+    cv2: Any = None
+    mp: Any = None
+    SelfieSegmentation: Any = None
     _HAS_MEDIAPIPE = False
 from dotenv import load_dotenv
 
@@ -39,16 +39,16 @@ try:
     from qdrant_client import QdrantClient
     from qdrant_client.http import models as qdrant_models
 except ImportError:
-    QdrantClient = None  # type: ignore[assignment]
-    qdrant_models = None  # type: ignore[assignment]
+    QdrantClient: Any = None
+    qdrant_models: Any = None
 try:
     from vercel_blob import put as blob_put
 except ImportError:
-    blob_put = None  # type: ignore[assignment]
+    blob_put: Any = None
 try:
     from pypdf import PdfReader
 except ImportError:
-    PdfReader = None  # type: ignore[assignment]
+    PdfReader: Any = None
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
