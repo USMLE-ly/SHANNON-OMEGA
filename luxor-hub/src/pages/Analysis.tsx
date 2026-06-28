@@ -15,6 +15,8 @@ import {
   TrendingUp, Layers, ArrowLeftRight, X
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { ImageSwiper } from "@/components/ui/image-swiper";
+import { FashionHero } from "@/components/ui/hero-fashion";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

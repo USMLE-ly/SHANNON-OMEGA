@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { ImageSwiper } from "@/components/ui/image-swiper";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlowingEffect } from "@/components/ui/glowing-effect";
@@ -466,6 +467,15 @@ export default function DressingRoomPage() {
 
               {/* 2-column grid for collage cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Swipeable image deck */}
+              <div className="flex justify-center">
+                <ImageSwiper
+                  images={generatedOutfits.map(o => o.items.map(i => i.image_url).join(',')).join(',')}
+                  cardWidth={300}
+                  cardHeight={420}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 {generatedOutfits.map((option, idx) => (
                   <div key={idx}
                     className="relative bg-zinc-900/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 overflow-hidden"
@@ -524,6 +534,7 @@ export default function DressingRoomPage() {
                     </button>
                   </div>
                 ))}
+              </div>
               </div>
 
               {/* Try again button */}
