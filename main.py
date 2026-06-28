@@ -32,11 +32,11 @@ except ImportError:
 try:
     from vercel_blob import put as blob_put
 except ImportError:
-    blob_put = None  # type: ignore[import,assignment]
+    blob_put = None
 try:
-    from pypdf import PdfReader  # type: ignore[import]
+    from pypdf import PdfReader
 except ImportError:
-    PdfReader = None  # type: ignore[assignment]
+    PdfReader = None
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
@@ -572,17 +572,20 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
         img = Image.open(io.BytesIO(raw))
         # Resize for speed
         img = img.resize((64, 96), Image.Resampling.LANCZOS)
-        pixels = [p for p in img.getdata()]
+        # Force RGB mode so type checker knows pixels are 3-tuples
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        pixel_data = list(img.getdata())  # type: ignore[arg-type]
         
         # Simple color quantization using average of similar pixels
         # Quantize to 32-color buckets
-        quantized = [(r // 32 * 32, g // 32 * 32, b // 32 * 32) for r, g, b in pixels]
+        quantized = [(r // 32 * 32, g // 32 * 32, b // 32 * 32) for r, g, b in pixel_data]  # type: ignore[union-attr]
         color_counts = Counter(quantized)
         top_pixels = [item[0] for item in color_counts.most_common(num_colors + 3)]
         
         # Match each dominant pixel to closest color name in dictionary
         matched_colors = []
-        for r, g, b in top_pixels:
+        for r, g, b in top_pixels:  # type: ignore[union-attr]
             best_name = None
             best_dist = float('inf')
             for name, hex_code in _COLOR_MAPPINGS.items():
@@ -633,12 +636,12 @@ def _extract_image_features(image_b64: str) -> str:
         img = Image.open(io.BytesIO(raw))
         # Resize for speed
         img_small = img.resize((32, 48), Image.Resampling.LANCZOS)
-        pixels = list(img_small.getdata())  # type: ignore[arg-type]
-        
-        # Find dominant colors using simple quantization
-        # Quantize to 16 colors
+        # Ensure RGB for type checker
+        if img_small.mode != 'RGB':
+            img_small = img_small.convert('RGB')
+        pixel_data = list(img_small.getdata())  # type: ignore[arg-type]
         quantized = []
-        for r, g, b in pixels:
+        for r, g, b in pixel_data:  # type: ignore[union-attr]
             # Map to nearest color name
             quantized.append((r // 64 * 64, g // 64 * 64, b // 64 * 64))
         
