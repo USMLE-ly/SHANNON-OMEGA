@@ -32,9 +32,9 @@ except ImportError:
 try:
     from vercel_blob import put as blob_put
 except ImportError:
-    blob_put = None
+    blob_put = None  # type: ignore[assignment]
 try:
-    from pypdf import PdfReader
+    from pypdf import PdfReader  # type: ignore[import]
 except ImportError:
     PdfReader = None
 
