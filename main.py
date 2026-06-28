@@ -29,9 +29,9 @@ except ImportError:
     QdrantClient = None  # type: ignore[assignment]
     qdrant_models = None  # type: ignore[assignment]
 try:
-    from vercel_blob import put as blob_put  # type: ignore[import]
+    from vercel_blob import put as blob_put
 except ImportError:
-    blob_put = None
+    blob_put = None  # type: ignore[assignment]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
