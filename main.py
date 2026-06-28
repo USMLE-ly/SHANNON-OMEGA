@@ -52,13 +52,12 @@ CORS(app, origins=["*"])
 # ---------------------------------------------------------------------------
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.2-11b-vision-preview:free")
 OPENROUTER_TEXT_MODEL = os.getenv("OPENROUTER_TEXT_MODEL", "google/gemma-4-31b-it:free")
 # Fallback models tried in order when primary is rate-limited
 OPENROUTER_FALLBACK_MODELS = [
+    "qwen/qwen2-vl-72b-instruct:free",
     "google/gemma-4-26b-a4b-it:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "nousresearch/hermes-3-llama-3.1-405b:free",
 ]
 
 CIPHER_MAX_TOKENS = int(os.getenv("CIPHER_MAX_TOKENS", "1200"))
@@ -365,7 +364,7 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
     _log.info("[FEATURES] Extracted: %s", features[:100])
     
     # Try vision model first (works from non-Replit IPs)
-    models_to_try = [OPENROUTER_MODEL] + [m for m in OPENROUTER_FALLBACK_MODELS if "gemma" in m.lower() or "llama" in m.lower()]
+    models_to_try = [OPENROUTER_MODEL] + [m for m in OPENROUTER_FALLBACK_MODELS if "gemma" in m.lower() or "llama" in m.lower() or "qwen" in m.lower()]
     last_error = None
     
     for model in models_to_try:
