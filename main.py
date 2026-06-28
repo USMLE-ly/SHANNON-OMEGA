@@ -34,16 +34,16 @@ try:
     from qdrant_client import QdrantClient
     from qdrant_client.http import models as qdrant_models
 except ImportError:
-    QdrantClient = None  # type: ignore[assignment]
-    qdrant_models = None  # type: ignore[assignment]
+    QdrantClient = None  # None is valid fallback for optional import
+    qdrant_models = None
 try:
     from vercel_blob import put as blob_put
 except ImportError:
-    blob_put = None  # type: ignore[assignment]
+    blob_put = None  # None is valid fallback for optional import
 try:
-    from pypdf import PdfReader  # type: ignore
+    from pypdf import PdfReader
 except ImportError:
-    PdfReader = None  # type: ignore[assignment]
+    PdfReader = None
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
@@ -429,8 +429,8 @@ def _extract_person_center_crop(image_b64: str) -> str:
                 _log.warning("[MASK] cv2.imdecode returned None, skipping segmentation")
                 raise ValueError("imdecode failed")
             cv_img = cv2.cvtColor(cv_decoded, cv2.COLOR_BGR2RGB)
-            mp_selfie = mp.solutions.selfie_segmentation  # type: ignore
-            with mp_selfie.SelfieSegmentation(model_selection=1) as segmenter:
+            from mediapipe.solutions.selfie_segmentation import SelfieSegmentation as _SelfieSeg
+            with _SelfieSeg(model_selection=1) as segmenter:
                 results = segmenter.process(cv_img)
                 if results and results.segmentation_mask is not None:
                     # Create binary mask
@@ -449,7 +449,9 @@ def _extract_person_center_crop(image_b64: str) -> str:
                         h = min(cv_img.shape[0] - y, h + 2 * pad_y)
                         cropped = masked[y:y+h, x:x+w]
                         # Convert back to PIL
-                        img = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR))  # type: ignore[arg-type]
+                        cropped_rgb = cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR)
+                        assert isinstance(cropped_rgb, np.ndarray)
+                        img = Image.fromarray(cropped_rgb)
         
         # Fallback: center-crop to square (removes edges where background dominates)
         w, h = img.size
@@ -505,7 +507,8 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
         # Force RGB mode so type checker knows pixels are 3-tuples
         if img.mode != 'RGB':
             img = img.convert('RGB')
-        pixel_data = list(img.getdata())  # type: ignore[arg-type]
+        pixel_array = np.array(img)
+        pixel_data = pixel_array.reshape(-1, 3).tolist()
         
         # Simple color quantization using average of similar pixels
         # Quantize to 32-color buckets
@@ -569,7 +572,8 @@ def _extract_image_features(image_b64: str) -> str:
         # Ensure RGB for type checker
         if img_small.mode != 'RGB':
             img_small = img_small.convert('RGB')
-        pixel_data = list(img_small.getdata())  # type: ignore[arg-type]
+        pixel_array = np.array(img_small)
+        pixel_data = pixel_array.reshape(-1, 3).tolist()
         quantized = []
         for r, g, b in pixel_data:
             # Map to nearest color name
