@@ -354,11 +354,33 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
     compressed = compress_image_b64(image_b64)
     headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
     
-    # Extract image features locally as text description
+    # Try vision model with image data
+    vision_payload = {
+        "model": MIMO_VISION_MODEL,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": system_prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}"}},
+        ]}],
+        "max_tokens": CIPHER_MAX_TOKENS,
+        "temperature": temperature,
+    }
+    try:
+        _log.info("[MIMO-VISION] Trying vision model=%s", MIMO_VISION_MODEL)
+        resp = requests.post(MIMO_API_URL, json=vision_payload, headers=headers, timeout=60)
+        _log.info("[MIMO-VISION] HTTP %s: %s", resp.status_code, resp.text[:200])
+        if resp.status_code == 200:
+            raw = resp.json()["choices"][0]["message"]["content"]
+            match = re.search(r"\{[\s\S]*\}", raw)
+            if match:
+                result = json.loads(match.group(0))
+                result["source"] = "cipher_vision"
+                return result
+    except Exception as exc:
+        _log.error("[MIMO-VISION] %s", exc)
+    
+    # Text fallback with extracted features
     features = _extract_image_features(image_b64)
     _log.info("[FEATURES] Extracted: %s", features[:100])
-    
-    # Use text model with extracted features (gemma-4 is text-only, no vision)
     text_prompt = f"""{system_prompt}
 
 IMPORTANT: Analyze these EXTRACTED IMAGE FEATURES as if you were seeing the photo:
@@ -367,29 +389,18 @@ IMPORTANT: Analyze these EXTRACTED IMAGE FEATURES as if you were seeing the phot
 
 Based on these features, make your best guess about the outfit. For style_score, use a reasonable estimate between 70-85.
 Return the SAME JSON format as requested above. If unsure about specific items, describe what's plausible for the given colors."""
-    
-    text_models = [MIMO_TEXT_MODEL]
-    for model in text_models:
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": text_prompt}],
-            "max_tokens": CIPHER_MAX_TOKENS,
-            "temperature": temperature,
-        }
-        try:
-            _log.info("[MIMO-VISION-FALLBACK] Trying text model=%s", model)
-            resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=30)
-            if resp.status_code == 200:
-                raw = resp.json()["choices"][0]["message"]["content"]
-                match = re.search(r"\{[\s\S]*\}", raw)
-                if match:
-                    _log.info("[MIMO-VISION-FALLBACK] Success with %s", model)
-                    result = json.loads(match.group(0))
-                    result["source"] = "text_fallback"
-                    return result
-        except Exception as exc:
-            _log.error("[MIMO-VISION-FALLBACK] %s on %s", exc, model)
-            continue
+    payload = {"model": MIMO_TEXT_MODEL, "messages": [{"role": "user", "content": text_prompt}], "max_tokens": CIPHER_MAX_TOKENS, "temperature": temperature}
+    try:
+        resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=30)
+        if resp.status_code == 200:
+            raw = resp.json()["choices"][0]["message"]["content"]
+            match = re.search(r"\{[\s\S]*\}", raw)
+            if match:
+                result = json.loads(match.group(0))
+                result["source"] = "text_fallback"
+                return result
+    except Exception as exc:
+        _log.error("[MIMO-VISION-FALLBACK] %s", exc)
     
     return None
 
