@@ -34,9 +34,9 @@ try:
 except ImportError:
     blob_put = None  # type: ignore[assignment]
 try:
-    from pypdf import PdfReader  # type: ignore[import]
+    from pypdf import PdfReader
 except ImportError:
-    PdfReader = None
+    PdfReader = None  # type: ignore[assignment]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
@@ -579,13 +579,13 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
         
         # Simple color quantization using average of similar pixels
         # Quantize to 32-color buckets
-        quantized = [(r // 32 * 32, g // 32 * 32, b // 32 * 32) for r, g, b in pixel_data]  # type: ignore[union-attr]
+        quantized = [(r // 32 * 32, g // 32 * 32, b // 32 * 32) for r, g, b in pixel_data]
         color_counts = Counter(quantized)
         top_pixels = [item[0] for item in color_counts.most_common(num_colors + 3)]
         
         # Match each dominant pixel to closest color name in dictionary
         matched_colors = []
-        for r, g, b in top_pixels:  # type: ignore[union-attr]
+        for r, g, b in top_pixels:
             best_name = None
             best_dist = float('inf')
             for name, hex_code in _COLOR_MAPPINGS.items():
@@ -641,7 +641,7 @@ def _extract_image_features(image_b64: str) -> str:
             img_small = img_small.convert('RGB')
         pixel_data = list(img_small.getdata())  # type: ignore[arg-type]
         quantized = []
-        for r, g, b in pixel_data:  # type: ignore[union-attr]
+        for r, g, b in pixel_data:
             # Map to nearest color name
             quantized.append((r // 64 * 64, g // 64 * 64, b // 64 * 64))
         
@@ -1138,7 +1138,7 @@ def upload_color_pdf():
     
     try:
         pdf_bytes = file.read()
-        reader = PdfReader(io.BytesIO(pdf_bytes))  # type: ignore[operator]
+        reader = PdfReader(io.BytesIO(pdf_bytes))
         extracted_text = ""
         for page in reader.pages:
             text = page.extract_text()
