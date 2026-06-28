@@ -23,6 +23,7 @@ import { FashionHero } from "@/components/ui/hero-fashion";
 /* ------------------------------------------------------------------ */
 interface OutfitData {
   style_name: string;
+  vibe_type?: string;
   actual_colors: string[];
   items_detected: string[];
   strengths: string[];
@@ -447,6 +448,7 @@ export default function Analysis() {
         audit: fnData.audit || '',
         tweak_plan: fnData.tweak_plan || '',
         generation_prompt: fnData.generation_prompt || '',
+        vibe_type: fnData.vibe_type || '',
         style_score: fnData.style_score || 0,
         seasonalFit: fnData.seasonalFit || '',
       };
@@ -515,6 +517,7 @@ export default function Analysis() {
     setImagePreview(s.image_url);
     setImageFile(null);
     setData({
+      vibe_type: (s.detected_items as any)?.vibe_type || '',
       style_name: s.overall_style || '',
       actual_colors: (s.color_palette as any)?.colors || [],
       items_detected: ((s.detected_items || []) as any[]).map((i: any) => i.name || ''),

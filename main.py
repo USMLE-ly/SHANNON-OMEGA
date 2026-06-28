@@ -362,29 +362,34 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 SACRED_PROMPT = """ABSOLUTE REALITY RULES — YOU ARE A CLASSIFICATION AI, NOT GENERATIVE:
 
-1. COLORS MUST BE EXACTLY WHAT YOU SEE IN THE PHOTO. If the shirt is BLUE, say "Blue Shirt". NOT "Navy", NOT "Teal", NOT "Azure". EXACT color you see.
-2. GARMENTS MUST BE EXACTLY WHAT YOU SEE. If you see a T-SHIRT, say "T-Shirt". NOT "Sweater", NOT "Blouse".
-3. NEVER INVENT COLORS OR GARMENTS. If you are unsure about an item, set it to "None".
-4. BACKGROUND IS REMOVED — you will see the person on a WHITE background. IGNORE the white background.
-5. FOCUS ONLY on the person's clothing. Describe the EXACT color and EXACT garment type.
+1. COLORS MUST BE EXACTLY WHAT YOU SEE IN THE PHOTO. If the shirt is BLUE, say "Blue". NOT "Navy", NOT "Teal", NOT "Azure". EXACT color you see.
+2. GARMENTS MUST BE EXACTLY WHAT YOU SEE. If you see a T-SHIRT, say "T-Shirt". NOT "Sweater", NOT "Blouse", NOT "Knit Top". 
+3. PER-ITEM DETAILS: For EVERY garment visible, identify its EXACT:
+   - Type (T-Shirt, Blazer, Jeans, Shorts, Sneakers, Loafers, etc.)
+   - Color (exact single color name)
+   - Material (Cotton, Denim, Leather, Wool, Silk, etc.) if identifiable
+   - Pattern (Striped, Floral, Solid, Plaid, Graphic, etc.) if applicable
+4. NEVER INVENT COLORS OR GARMENTS. If you are unsure about an item, set it to "None".
+5. BACKGROUND IS REMOVED — you will see the person on a WHITE background. IGNORE the white background.
+6. FOCUS ONLY on the person's clothing. Describe the EXACT color and EXACT garment type.
 
 Return this JSON. No conversation. No markdown. No invented data.
 {
   "gender": "Female" or "Male",
   "vibe_type": "Casual, Formal, Business, Sporty, Date Night, Party, Bohemian, Streetwear, Minimalist, Vintage",
-  "top_type": "EXACT color + EXACT garment type (e.g., "Blue T-Shirt") — or "None" if not visible",
-  "bottom_type": "EXACT color + EXACT garment type — or "None" if not visible",
-  "footwear": "EXACT color + EXACT footwear — or "None" if not visible",
-  "accessories": "EXACT accessory — or "None"",
+  "top_type": "EXACT color + EXACT garment type (e.g., 'Blue T-Shirt') — or 'None' if not visible",
+  "bottom_type": "EXACT color + EXACT garment type (e.g., 'Black Jeans') — or 'None' if not visible",
+  "footwear": "EXACT color + EXACT footwear (e.g., 'White Sneakers') — or 'None' if not visible",
+  "accessories": "EXACT accessory (e.g., 'Silver Watch') — or 'None'",
   "style_score": int(70-95),
-  "style_name": "2-word style vibe",
-  "strengths": ["3 REAL strengths based on the ACTUAL garments you see"],
+  "style_name": "2-word style vibe (e.g., 'Casual Chic')",
+  "strengths": ["3 REAL strengths based on the ACTUAL garments you see. Example: 'Navy Blue T-Shirt adds a classic touch'"],
   "audit": "summary of the REAL outfit (max 15 words)",
-  "tweak_plan": "1 improvement suggestion",
-  "generation_prompt": "20-word editorial prompt"
+  "tweak_plan": "1 specific improvement suggestion based on the actual garments",
+  "generation_prompt": "20-word editorial prompt describing the outfit"
 }
 
-CRITICAL: style_score=integer, strengths=array[3]. Every key present. ONLY JSON. REAL colors only. NEVER invent."""
+CRITICAL: style_score=integer 70-95, strengths=array of exactly 3 strings. Every key present. ONLY JSON. REAL colors only. NEVER invent garments or colors."""
 
 STYLIST_PROMPT = """You are FASHION-OMEGA, an expert fashion stylist AI. Guide the user through a 3-step quiz:
 Step 1: Ask about their vibe (Casual, Business, Party, Date Night, Sport).
@@ -407,7 +412,7 @@ Return ONLY a JSON array of 2 objects in this exact format:
 ]"""
 
 REQUIRED_KEYS = [
-    "gender", "top_type", "bottom_type", "footwear", "accessories",
+    "gender", "vibe_type", "top_type", "bottom_type", "footwear", "accessories",
     "style_score", "style_name", "strengths", "audit", "tweak_plan",
     "generation_prompt",
 ]
@@ -838,19 +843,41 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
                 default_colors = ["White", "Beige", "Navy"]; break
         actual_colors = default_colors
     strengths = result.get("strengths", [])
+    # Ensure strengths are unique (no duplicates)
+    if isinstance(strengths, list):
+        seen_s = set()
+        unique_s = []
+        for s in strengths:
+            if s not in seen_s:
+                seen_s.add(s)
+                unique_s.append(s)
+        strengths = unique_s
     # ALWAYS generate strengths from REAL items detected (not AI hallucinated ones)
     detected = [s for s in [result.get(k, "") for k in ["top_type", "bottom_type", "footwear", "accessories"]] if s and s != "None"]
     if detected and len(detected) >= 2:
-        strengths = []
+        new_strengths = []
         for i, d in enumerate(detected[:3]):
-            strengths.append(f"Well-chosen {d}")
+            new_strengths.append(f"Well-chosen {d}")
+        # Deduplicate
+        seen = set()
+        strengths = []
+        for s in new_strengths:
+            if s not in seen:
+                seen.add(s)
+                strengths.append(s)
     elif not strengths or not isinstance(strengths, list) or len(strengths) < 3:
         if items_detected:
-            strengths = []
+            new_strengths = []
+            seen = set()
             for item in items_detected[:3]:
-                strengths.append(f"Chosen {item.lower()}")
+                s = f"Chosen {item.lower()}"
+                if s not in seen:
+                    seen.add(s)
+                    new_strengths.append(s)
+            strengths = new_strengths
         while len(strengths) < 3:
-            strengths.append("Well-balanced proportions")
+            fallback = ["Well-balanced proportions", "Cohesive color story", "Comfortable and stylish"]
+            strengths.append(fallback[len(strengths)])
     style_score = result.get("style_score")
     if style_score is None or not isinstance(style_score, (int, float)) or style_score < 60:
         style_score = 78

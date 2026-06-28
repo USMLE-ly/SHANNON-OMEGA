@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { ImageSwiper } from "@/components/ui/image-swiper";
+import { FashionHero } from "@/components/ui/hero-fashion";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlowingEffect } from "@/components/ui/glowing-effect";
@@ -90,6 +91,7 @@ export default function DressingRoomPage() {
   const [showOutfitModal, setShowOutfitModal] = useState(false);
   const [outfitGenerating, setOutfitGenerating] = useState(false);
   const [generatedOutfits, setGeneratedOutfits] = useState<OutfitOption[]>([]);
+  const [selectedOutfit, setSelectedOutfit] = useState<OutfitOption | null>(null);
 
   // 3-step quiz state
   const [step, setStep] = useState(0);
@@ -111,6 +113,13 @@ export default function DressingRoomPage() {
   };
 
   useEffect(() => { fetchItems(); }, [user]);
+
+  // Auto-select first outfit when generated
+  useEffect(() => {
+    if (generatedOutfits.length > 0 && !selectedOutfit) {
+      setSelectedOutfit(generatedOutfits[0]);
+    }
+  }, [generatedOutfits]);
 
   const filtered = items.filter(
     (i) =>
@@ -475,6 +484,23 @@ export default function DressingRoomPage() {
                   cardHeight={420}
                 />
               </div>
+              
+              {/* Selected outfit details via FashionHero */}
+              {selectedOutfit && (
+                <div className="mt-8">
+                  <FashionHero
+                    styleName={selectedOutfit.outfit_name || "Your Style"}
+                    styleScore={null}
+                    strengths={[selectedOutfit.reason || ""]}
+                    itemsDetected={selectedOutfit.items?.map((i: any) => i.label || i.type || "") || []}
+                    actualColors={[]}
+                    audit={selectedOutfit.reason || ""}
+                    tweakPlan=""
+                    imageUrl={selectedOutfit.items?.[0]?.image_url || ""}
+                    vibeType=""
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 {generatedOutfits.map((option, idx) => (
                   <div key={idx}
