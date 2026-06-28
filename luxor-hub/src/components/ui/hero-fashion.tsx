@@ -1,5 +1,6 @@
 "use client";
 import { motion } from "motion/react";
+import { AnimatedGradient } from "@/components/ui/animated-gradient-with-svg";
 
 interface FashionHeroProps {
   styleName?: string;
@@ -163,81 +164,100 @@ export function FashionHero({
             {/* Absolutely nothing shown when neither imageUrl nor vibeType — no placeholder */}
           </div>
 
-          {/* Content Side */}
+          {/* Content Side — Animated Gradient Card */}
           <div className="md:order-1 flex flex-col justify-between">
-            <div className="flex flex-col h-full justify-between gap-4">
-              {/* Header - title only, score is overlaid on the image */}
-              <h1 className="text-5xl md:text-7xl font-bold text-foreground leading-tight tracking-tighter">
-                {styleName}
-              </h1>
+            <motion.div
+              className="relative overflow-hidden flex-1 h-full bg-background/80 border border-white/10 rounded-2xl min-h-[300px]"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            >
+              {/* Animated Gradient Background */}
+              <AnimatedGradient
+                colors={["#7c3aed", "#3b82f6", "#06b6d4"]}
+                speed={0.08}
+                blur="medium"
+              />
 
-              {/* Items detected - detailed labels with color dots */}
-              {(topType || bottomType || footwear) && (
-                <div className="space-y-1.5 text-sm">
-                  {topType && <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Top</span>
-                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[topType.split(' ')[0]] || 'bg-gray-400'}`} />
-                    <span className="text-foreground/90">{topType}</span>
-                  </div>}
-                  {bottomType && <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Bottom</span>
-                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[bottomType.split(' ')[0]] || 'bg-gray-400'}`} />
-                    <span className="text-foreground/90">{bottomType}</span>
-                  </div>}
-                  {footwear && <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Shoes</span>
-                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[footwear.split(' ')[0]] || 'bg-gray-400'}`} />
-                    <span className="text-foreground/90">{footwear}</span>
-                  </div>}
-                  {accessories && accessories !== "None" && <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Acc</span>
-                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[accessories.split(' ')[0]] || 'bg-gray-400'}`} />
-                    <span className="text-foreground/90">{accessories}</span>
-                  </div>}
+              {/* Glassmorphism Content Wrapper */}
+              <div className="relative z-10 p-5 md:p-8 backdrop-blur-sm h-full flex flex-col justify-between">
+                
+                {/* Header - Style Name */}
+                <div className="mb-4">
+                  <h2 className="text-4xl md:text-6xl lg:text-7xl font-medium text-white leading-tight tracking-tight">
+                    {styleName}
+                  </h2>
                 </div>
-              )}
-              {/* Fallback plain items */}
-              {!(topType || bottomType || footwear) && itemsDetected.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {itemsDetected.map((item, i) => (
-                    <span key={i} className="px-3 py-1 rounded-full bg-zinc-800/60 border border-zinc-700/50 text-xs text-foreground/80">
-                      {item}
-                    </span>
-                  ))}
+
+                {/* Body - Items & Strengths */}
+                <div className="space-y-4 flex-grow">
+                  {/* Items Detected as a Vertical List */}
+                  {(topType || bottomType || footwear) && (
+                    <div className="space-y-2">
+                      {topType && (
+                        <div className="flex items-center gap-2 text-sm md:text-base font-medium">
+                          <span className={`w-2 h-2 rounded-full ${colorSwatchMap[topType.split(' ')[0]] || 'bg-white/60'}`} />
+                          <span className="capitalize text-white/95">{topType}</span>
+                        </div>
+                      )}
+                      {bottomType && (
+                        <div className="flex items-center gap-2 text-sm md:text-base font-medium">
+                          <span className={`w-2 h-2 rounded-full ${colorSwatchMap[bottomType.split(' ')[0]] || 'bg-white/60'}`} />
+                          <span className="capitalize text-white/95">{bottomType}</span>
+                        </div>
+                      )}
+                      {footwear && (
+                        <div className="flex items-center gap-2 text-sm md:text-base font-medium">
+                          <span className={`w-2 h-2 rounded-full ${colorSwatchMap[footwear.split(' ')[0]] || 'bg-white/60'}`} />
+                          <span className="capitalize text-white/95">{footwear}</span>
+                        </div>
+                      )}
+                      {accessories && accessories !== "None" && (
+                        <div className="flex items-center gap-2 text-sm md:text-base font-medium">
+                          <span className={`w-2 h-2 rounded-full ${colorSwatchMap[accessories.split(' ')[0]] || 'bg-white/60'}`} />
+                          <span className="capitalize text-white/95">{accessories}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* Fallback plain items */}
+                  {!(topType || bottomType || footwear) && itemsDetected.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {itemsDetected.map((item, i) => (
+                        <span key={i} className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-xs text-white/80">
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Strengths List */}
+                  {strengths.length > 0 && (
+                    <div className="space-y-1.5 mt-4">
+                      {strengths.map((s, idx) => (
+                        <div key={idx} className="flex items-start gap-2 text-sm text-white/90">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 flex-shrink-0" />
+                          <span>{s}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* Colors are embedded in each item label below — no standalone section needed */}
+                {/* Footer - Audit & Tweak Plan */}
+                <div className="mt-4 pt-4 border-t border-white/10">
+                  {audit && (
+                    <p className="text-sm text-white/70 mb-2 leading-relaxed">{audit}</p>
+                  )}
+                  {tweakPlan && (
+                    <p className="text-sm italic text-purple-300">
+                      <span className="font-semibold not-italic text-white/90">Tweak:</span> {tweakPlan}
+                    </p>
+                  )}
+                </div>
 
-              {/* Strengths list */}
-              <ul className="space-y-2 tracking-tighter text-base text-foreground/80">
-                {strengths.length > 0 ? strengths.map((item, index) => (
-                  <motion.li
-                    key={index}
-                    initial={{ opacity: 0.8 }}
-                    whileHover={{ opacity: 1, y: -2, transition: { duration: 0.3, ease: "easeOut" } }}
-                    className="flex items-center gap-2"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500/70 flex-shrink-0" />
-                    {item}
-                  </motion.li>
-                )) : (
-                  <li className="text-muted-foreground/50">No strengths detected</li>
-                )}
-              </ul>
-
-              {/* Audit / Tweak */}
-              <div className="space-y-3 mt-auto pt-4 border-t border-zinc-800/60">
-                {audit && (
-                  <p className="text-sm text-foreground/70 leading-relaxed">{audit}</p>
-                )}
-                {tweakPlan && (
-                  <p className="text-sm text-purple-400/80 italic">
-                    <span className="font-semibold text-purple-400">Tweak:</span> {tweakPlan}
-                  </p>
-                )}
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
       </div>
