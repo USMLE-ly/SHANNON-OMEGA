@@ -13,7 +13,7 @@ import urllib.parse
 import uuid
 from concurrent.futures import TimeoutError
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List, TYPE_CHECKING
+from typing import Optional, Dict, Any, List
 
 import requests
 from flask import Flask, request, jsonify
@@ -24,32 +24,31 @@ import numpy as np
 try:
     import cv2
     import mediapipe as mp
+    from mediapipe.solutions.selfie_segmentation import SelfieSegmentation
     _HAS_MEDIAPIPE = True
 except ImportError:
+    cv2 = None  # type: ignore[assignment]
+    mp = None  # type: ignore[assignment]
+    SelfieSegmentation = None  # type: ignore[assignment]
     _HAS_MEDIAPIPE = False
 from dotenv import load_dotenv
 
 # Qdrant + Vercel Blob
-if TYPE_CHECKING:
-    from qdrant_client import QdrantClient
-    from qdrant_client.http import models as qdrant_models
-    from vercel_blob import put as blob_put
-    from pypdf import PdfReader
 
 try:
     from qdrant_client import QdrantClient
     from qdrant_client.http import models as qdrant_models
 except ImportError:
-    QdrantClient: Any = None
-    qdrant_models: Any = None
+    QdrantClient = None  # type: ignore[assignment]
+    qdrant_models = None  # type: ignore[assignment]
 try:
     from vercel_blob import put as blob_put
 except ImportError:
-    blob_put: Any = None
+    blob_put = None  # type: ignore[assignment]
 try:
     from pypdf import PdfReader
 except ImportError:
-    PdfReader: Any = None
+    PdfReader = None  # type: ignore[assignment]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
@@ -418,63 +417,41 @@ REQUIRED_KEYS = [
 # Image compression
 # ---------------------------------------------------------------------------
 def _extract_person_center_crop(image_b64: str) -> str:
-    """
-    Use MediaPipe selfie segmentation to mask out background,
-    or fall back to center-cropping the image.
-    Returns a base64-encoded JPEG with background removed/centered.
-    """
+    """Use MediaPipe to mask background, or fall back to center-crop."""
     try:
         raw = base64.b64decode(image_b64)
         img = Image.open(io.BytesIO(raw)).convert('RGB')
-        
-        if _HAS_MEDIAPIPE:
-            # Use MediaPipe to segment the person
-            cv_decoded = cv2.imdecode(
-                np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
-            if cv_decoded is None:
-                _log.warning("[MASK] cv2.imdecode returned None, skipping segmentation")
-                raise ValueError("imdecode failed")
-            cv_img = cv2.cvtColor(cv_decoded, cv2.COLOR_BGR2RGB)
-            try:
-                from mediapipe.solutions.selfie_segmentation import SelfieSegmentation as _SelfieSeg
-            except ImportError:
-                _SelfieSeg = None
-            if _SelfieSeg is not None:
-                with _SelfieSeg(model_selection=1) as segmenter:
-                    results = segmenter.process(cv_img)
-                    if results and results.segmentation_mask is not None:
-                        # Create binary mask
-                        mask = (results.segmentation_mask > 0.5).astype(np.uint8) * 255
-                        # Apply mask to remove background
-                        masked = cv2.bitwise_and(cv_img, cv_img, mask=mask)
-                        # Find bounding box of person
-                        coords = cv2.findNonZero(mask)
-                        if coords is not None:
-                            x, y, w, h = cv2.boundingRect(coords)
-                            # Expand bbox by 10% for context
-                            pad_x, pad_y = int(w * 0.1), int(h * 0.1)
-                            x = max(0, x - pad_x)
-                            y = max(0, y - pad_y)
-                            w = min(cv_img.shape[1] - x, w + 2 * pad_x)
-                            h = min(cv_img.shape[0] - y, h + 2 * pad_y)
-                            cropped = masked[y:y+h, x:x+w]
-                            # Convert back to PIL
-                            cropped_rgb = cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR)
-                            assert isinstance(cropped_rgb, np.ndarray)
-                            img = Image.fromarray(cropped_rgb)
-        
-        # Fallback: center-crop to square (removes edges where background dominates)
+        img_np = np.array(img)
+
+        if _HAS_MEDIAPIPE and SelfieSegmentation is not None and cv2 is not None:
+            # Convert to OpenCV format for MediaPipe
+            cv_img = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+            with SelfieSegmentation(model_selection=0) as segmentation:
+                results = segmentation.process(cv_img)
+                if results.segmentation_mask is not None:
+                    mask = results.segmentation_mask
+                    # Create a binary mask where the person is (threshold > 0.5)
+                    condition = mask > 0.5
+                    # Keep only the person's pixels
+                    masked_img = np.zeros_like(img_np)
+                    masked_img[condition] = img_np[condition]
+                    # Convert masked image back to PIL
+                    masked_pil = Image.fromarray(masked_img)
+                    buf = io.BytesIO()
+                    masked_pil.save(buf, format="JPEG", quality=85)
+                    return base64.b64encode(buf.getvalue()).decode()
+
+        # Fallback: Center crop if no mediapipe or mask failed
         w, h = img.size
-        size = min(w, h)
-        left = (w - size) // 2
-        top = (h - size) // 2
-        img = img.crop((left, top, left + size, top + size))
-        
+        center_x, center_y = w // 2, h // 2
+        crop_size = min(h, w) // 2
+        cropped = img.crop((center_x - crop_size, center_y - crop_size,
+                            center_x + crop_size, center_y + crop_size))
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
+        cropped.save(buf, format="JPEG", quality=85)
         return base64.b64encode(buf.getvalue()).decode()
     except Exception as exc:
-        _log.warning("[MASK] Person segmentation failed: %s", exc)
+        _log.warning("[MASK] %s", exc)
         return image_b64
 
 def compress_image_b64(image_b64: str) -> str:
