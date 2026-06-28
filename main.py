@@ -482,11 +482,10 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
-SACRED_PROMPT = """You are a hyper-accurate fashion identification AI.
-**CRITICAL DIRECTIVE: IGNORE 100% OF THE BACKGROUND.** Do NOT look at the road, trees, stairs, walls, floor, pavement, or any surroundings.
-Lock your analysis EXCLUSIVELY onto the human subject and their clothing.
-Identify the EXACT garment types. Do NOT invent items — if they are not clearly visible, say "None".
-Use the EXACT color names from the provided list below. Do NOT make up colors.
+SACRED_PROMPT = """You are a hyper-accurate fashion identification AI. 
+**CRITICAL DIRECTIVE:** You MUST ignore 100% of the background. Do not look at the road, pavement, trees, leaves, sky, or stairs. You MUST lock 100% onto the subject's clothing.
+Do NOT guess colors based on the environment. Use EXACTLY the colors of the garments.
+Return this EXACT JSON. Do not invent items. If the top is white, state "White T-Shirt". If the shoes are grey, state "Grey Clogs".
 
 **CRITICAL COLOR DIRECTIVE:** You MUST use ONLY the following exact color names when describing clothing:
 Acid Wash, Amethyst, Apricot, Aqua, Army Green, Baby Blue, Barbie Pink, Beige, Black, Black Denim, Blue, Blue Denim, Blush, Brick, Bronze, Brown, Bubblegum, Burgundy, Burnt Orange, Butter, Camel, Camo Brown, Camo Green, Canary, Caramel, Champagne, Charcoal, Cherry, Chestnut, Chocolate, Cobalt, Coffee, Copper, Coral, Cornflower, Cotton Candy, Cream, Crimson, Dark Denim, Denim, Dusty Rose, Eggplant, Emerald, Espresso, Forest Green, Fuchsia, Gold, Grape, Green, Grey, Holographic, Honey, Hot Pink, Hunter Green, Indigo, Ivory, Jade, Kelly Green, Khaki, Lace, Lavender, Lemon, Leopard, Light Denim, Lilac, Lime, Magenta, Mahogany, Maroon, Mauve, Melon, Metallic Gold, Metallic Silver, Midnight Blue, Mint, Mocha, Moss, Mustard, Natural Linen, Navy, Neon Green, Neon Yellow, Nude, Nude Blush, Ocean, Ochre, Olive, Orange, Orchid, Patent Leather, Peach, Pearl, Pink, Pistachio, Plum, Powder Blue, Pumpkin, Purple, Raw Denim, Raw Silk, Red, Rose, Rose Gold, Royal Blue, Ruby, Rust, Sage, Salmon, Sapphire, Scarlet, Sea Foam, Sequin, Silver, Sky Blue, Slate, Steel, Steel Blue, Sunflower, Tan, Tangerine, Taupe, Teal, Terra Cotta, Turquoise, Violet, White, White Cotton, Wine, Yellow, Zebra
