@@ -50,11 +50,11 @@ CORS(app, origins=["*"])
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.2-11b-vision-preview:free")
-OPENROUTER_TEXT_MODEL = os.getenv("OPENROUTER_TEXT_MODEL", "meta-llama/llama-3.1-8b-instant:free")
-# No fallback models — single model only
+MIMO_API_KEY = os.getenv("MIMO_API_KEY", "sk-sryom8h5q2pvhbuibrgq5kfpnmqxrnuv5vjlnxkkic1u0oot")
+MIMO_API_URL = "https://api.xiaomimimo.com/v1/chat/completions"
+MIMO_VISION_MODEL = os.getenv("MIMO_VISION_MODEL", "mimo-v2-omni")
+MIMO_TEXT_MODEL = os.getenv("MIMO_TEXT_MODEL", "mimo-v2.5-pro")
+# Single provider: Xiaomi MiMo API (no fallback chains)
 CIPHER_MAX_TOKENS = int(os.getenv("CIPHER_MAX_TOKENS", "1200"))
 PORT = int(os.getenv("PORT", "5000"))
 ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "90"))
@@ -66,9 +66,9 @@ BLOB_READ_WRITE_TOKEN = os.getenv("BLOB_READ_WRITE_TOKEN", "")
 QDRANT_URL = os.getenv("QDRANT_URL", "")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
-_log.info("OpenRouter key loaded: %s (masked: %s)", bool(OPENROUTER_API_KEY), OPENROUTER_API_KEY[:8] + "..." + OPENROUTER_API_KEY[-4:] if OPENROUTER_API_KEY else "NONE")
-_log.info("Vision model: %s", OPENROUTER_MODEL)
-_log.info("Text model: %s", OPENROUTER_TEXT_MODEL)
+_log.info("MiMo API key loaded: %s (masked: %s)", bool(MIMO_API_KEY), MIMO_API_KEY[:8] + "..." + MIMO_API_KEY[-4:] if MIMO_API_KEY else "NONE")
+_log.info("MiMo vision model: %s", MIMO_VISION_MODEL)
+_log.info("MiMo text model: %s", MIMO_TEXT_MODEL)
 _log.info("Blob token: %s", bool(BLOB_READ_WRITE_TOKEN))
 _log.info("Qdrant: %s", bool(QDRANT_URL and QDRANT_API_KEY))
 
@@ -349,10 +349,10 @@ def _extract_image_features(image_b64: str) -> str:
 
 
 def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, temperature: float = 0.2) -> Optional[Dict[str, Any]]:
-    if not OPENROUTER_API_KEY:
+    if not MIMO_API_KEY:
         return None
     compressed = compress_image_b64(image_b64)
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
+    headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
     
     # Extract image features locally as text description
     features = _extract_image_features(image_b64)
@@ -368,7 +368,7 @@ IMPORTANT: Analyze these EXTRACTED IMAGE FEATURES as if you were seeing the phot
 Based on these features, make your best guess about the outfit. For style_score, use a reasonable estimate between 70-85.
 Return the SAME JSON format as requested above. If unsure about specific items, describe what's plausible for the given colors."""
     
-    text_models = [OPENROUTER_TEXT_MODEL]
+    text_models = [MIMO_TEXT_MODEL]
     for model in text_models:
         payload = {
             "model": model,
@@ -377,28 +377,28 @@ Return the SAME JSON format as requested above. If unsure about specific items, 
             "temperature": temperature,
         }
         try:
-            _log.info("[OPENROUTER-VISION-FALLBACK] Trying text model=%s", model)
-            resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=30)
+            _log.info("[MIMO-VISION-FALLBACK] Trying text model=%s", model)
+            resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=30)
             if resp.status_code == 200:
                 raw = resp.json()["choices"][0]["message"]["content"]
                 match = re.search(r"\{[\s\S]*\}", raw)
                 if match:
-                    _log.info("[OPENROUTER-VISION-FALLBACK] Success with %s", model)
+                    _log.info("[MIMO-VISION-FALLBACK] Success with %s", model)
                     result = json.loads(match.group(0))
                     result["source"] = "text_fallback"
                     return result
         except Exception as exc:
-            _log.error("[OPENROUTER-VISION-FALLBACK] %s on %s", exc, model)
+            _log.error("[MIMO-VISION-FALLBACK] %s on %s", exc, model)
             continue
     
     return None
 
 def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Optional[Dict[str, Any]]:
-    if not OPENROUTER_API_KEY:
+    if not MIMO_API_KEY:
         return None
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
+    headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
     
-    models_to_try = [OPENROUTER_TEXT_MODEL]
+    models_to_try = [MIMO_TEXT_MODEL]
     
     for model in models_to_try:
         groq_messages = []
@@ -412,22 +412,22 @@ def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temp
             "temperature": temperature,
         }
         try:
-            _log.info("[OPENROUTER-TEXT] Trying model=%s", model)
-            resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=15)
-            _log.info("[OPENROUTER-TEXT] HTTP %s for %s (key=%s...)", resp.status_code, model, OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "NONE")
+            _log.info("[MIMO-TEXT] Trying model=%s", model)
+            resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=15)
+            _log.info("[MIMO-TEXT] HTTP %s for %s (key=%s...)", resp.status_code, model, MIMO_API_KEY[:8] if MIMO_API_KEY else "NONE")
             if resp.status_code == 200:
                 raw = resp.json()["choices"][0]["message"]["content"]
                 match = re.search(r"\{[\s\S]*\}", raw)
                 if match:
                     return json.loads(match.group(0))
             elif resp.status_code == 429:
-                _log.warning("[OPENROUTER-TEXT] Rate limited on %s, trying next", model)
+                _log.warning("[MIMO-TEXT] Rate limited on %s, trying next", model)
                 continue
             else:
-                _log.error("[OPENROUTER-TEXT] HTTP %s from %s: %s", resp.status_code, model, resp.text[:200])
+                _log.error("[MIMO-TEXT] HTTP %s from %s: %s", resp.status_code, model, resp.text[:200])
                 continue
         except Exception as exc:
-            _log.error("[OPENROUTER-TEXT] %s on %s", exc, model)
+            _log.error("[MIMO-TEXT] %s on %s", exc, model)
             continue
     return None
 
@@ -723,13 +723,13 @@ def debug_analyze():
     if not image_b64:
         return jsonify({"error": "Missing image_b64"}), 400
     compressed = compress_image_b64(image_b64)
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
+    headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
     features = _extract_image_features(image_b64)
-    models_to_try = [OPENROUTER_MODEL]
+    models_to_try = [MIMO_VISION_MODEL]
     for model in models_to_try:
         payload = {"model": model, "messages": [{"role": "user", "content": [{"type": "text", "text": SACRED_PROMPT + "\n\nExtracted image features: " + features}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}", "detail": "low"}}]}], "max_tokens": CIPHER_MAX_TOKENS, "temperature": 0.2}
         try:
-            resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=120)
+            resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=120)
             if resp.status_code == 200:
                 return jsonify({"status": "success", "code": 200, "model": model, "raw": resp.json()})
             elif resp.status_code == 429:
@@ -740,10 +740,10 @@ def debug_analyze():
     
     # Text fallback for debug
     text_prompt = f"{SACRED_PROMPT}\n\nVision API unavailable. Using extracted features:\n{features}\n\nReturn the JSON as requested."
-    payload = {"model": OPENROUTER_TEXT_MODEL, "messages": [{"role": "user", "content": text_prompt}], "max_tokens": CIPHER_MAX_TOKENS}
+    payload = {"model": MIMO_TEXT_MODEL, "messages": [{"role": "user", "content": text_prompt}], "max_tokens": CIPHER_MAX_TOKENS}
     try:
-        resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=30)
-        return jsonify({"status": "success" if resp.status_code == 200 else "error", "code": resp.status_code, "model": "text_fallback", "raw": resp.json() if resp.status_code == 200 else {}, "text": resp.text[:500] if resp.status_code != 200 else ""})
+        resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=30)
+        return jsonify({"status": "success" if resp.status_code == 200 else "error", "code": resp.status_code, "model": "mimo_text_fallback", "raw": resp.json() if resp.status_code == 200 else {}, "text": resp.text[:500] if resp.status_code != 200 else ""})
     except Exception as e:
         return jsonify({"status": "exception", "error": str(e)})
 
@@ -755,7 +755,7 @@ def health():
     return jsonify({
         "status": "ok",
         "service": "luxor-fashion-omega-v5",
-        "openrouter_configured": bool(OPENROUTER_API_KEY), "openrouter_key_prefix": OPENROUTER_API_KEY[:8] if OPENROUTER_API_KEY else "",
+        "mimo_configured": bool(MIMO_API_KEY), "mimo_key_prefix": MIMO_API_KEY[:8] if MIMO_API_KEY else "",
         "blob_configured": bool(BLOB_READ_WRITE_TOKEN),
         "qdrant_configured": bool(QDRANT_URL and QDRANT_API_KEY),
         "closet_items": closet_count,
