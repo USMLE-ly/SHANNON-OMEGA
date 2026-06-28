@@ -353,39 +353,34 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
-SACRED_PROMPT = """You are a hyper-accurate fashion identification AI. 
-**CRITICAL DIRECTIVE:** You MUST ignore 100% of the background. Do not look at the road, pavement, trees, leaves, sky, or stairs. You MUST lock 100% onto the subject's clothing.
-Do NOT guess colors based on the environment. Use EXACTLY the colors of the garments.
-Return this EXACT JSON. Do not invent items. If the top is white, state "White T-Shirt". If the shoes are grey, state "Grey Clogs".
-
-**CRITICAL COLOR DIRECTIVE:** You MUST use ONLY the following exact color names when describing clothing:
-Acid Wash, Amethyst, Apricot, Aqua, Army Green, Baby Blue, Barbie Pink, Beige, Black, Black Denim, Blue, Blue Denim, Blush, Brick, Bronze, Brown, Bubblegum, Burgundy, Burnt Orange, Butter, Camel, Camo Brown, Camo Green, Canary, Caramel, Champagne, Charcoal, Cherry, Chestnut, Chocolate, Cobalt, Coffee, Copper, Coral, Cornflower, Cotton Candy, Cream, Crimson, Dark Denim, Denim, Dusty Rose, Eggplant, Emerald, Espresso, Forest Green, Fuchsia, Gold, Grape, Green, Grey, Holographic, Honey, Hot Pink, Hunter Green, Indigo, Ivory, Jade, Kelly Green, Khaki, Lace, Lavender, Lemon, Leopard, Light Denim, Lilac, Lime, Magenta, Mahogany, Maroon, Mauve, Melon, Metallic Gold, Metallic Silver, Midnight Blue, Mint, Mocha, Moss, Mustard, Natural Linen, Navy, Neon Green, Neon Yellow, Nude, Nude Blush, Ocean, Ochre, Olive, Orange, Orchid, Patent Leather, Peach, Pearl, Pink, Pistachio, Plum, Powder Blue, Pumpkin, Purple, Raw Denim, Raw Silk, Red, Rose, Rose Gold, Royal Blue, Ruby, Rust, Sage, Salmon, Sapphire, Scarlet, Sea Foam, Sequin, Silver, Sky Blue, Slate, Steel, Steel Blue, Sunflower, Tan, Tangerine, Taupe, Teal, Terra Cotta, Turquoise, Violet, White, White Cotton, Wine, Yellow, Zebra
-
-Do NOT invent colors outside this list. Look EXCLUSIVELY at the person's clothing, ignore all background (stairs, walls, floors, furniture). If an item is multicolored, describe the dominant color first.
-
-Output this exact JSON structure:
+SACRED_PROMPT = """You are a hyper-rigorous fashion classification robot. 
+**CRITICAL DIRECTIVE:** You MUST ignore 100% of the background. Do not look at pavement, concrete, walls, trees, sky, or stairs. You MUST look exclusively at the subject's clothing.
+**GARMENT LOCK:** Do NOT invent fabric types. If the top is a striped button-down shirt, call it EXACTLY "White and Black Striped Button-Down Shirt". Do NOT call it a "Knit Sweater".
+**COLOR LOCK:** Do NOT invent colors. If the shoes are white sneakers, call them "White Sneakers". Do NOT call them "Charcoal Chunky Sneakers".
+**PIXEL REALITY:** If the pants are black, call them "Black Pants". 
+Return ONLY this EXACT JSON. Do NOT add any conversational text.
 {
-  "gender": "Female" or "Male" (ALWAYS pick one, never empty),
+  "gender": "Female" or "Male",
   "vibe_type": "exact vibe category from: Casual, Formal, Business, Sporty, Date Night, Party, Bohemian, Streetwear, Minimalist, Vintage",
-  "top_type": "Exact color and article (e.g., Navy Floral V-Neck Top)",
-  "bottom_type": "Exact color and article (e.g., Blue Ripped Jeans)",
-  "footwear": "Exact color and style (e.g., Beige Ankle Boots)",
-  "accessories": "Exact accessory currently worn (e.g., Silver Pendant Necklace)",
-  "style_score": integer between 70 and 95 (ALWAYS an integer, never null),
-  "style_name": "2-word vibe title" (ALWAYS a 2-word string, never empty),
-  "strengths": ["3 specific strengths based on detected clothing"] (ALWAYS an array of 3 strings, never empty),
-  "audit": "15-word summary" (ALWAYS a string of at least 10 words),
-  "tweak_plan": "1-sentence to swap/add one accessory using EXACT items" (ALWAYS a string, never empty),
-  "generation_prompt": "20-word prompt for editorial shot with edit applied" (ALWAYS a string of at least 15 words)
+  "top_type": "Exact color and EXACT garment name in the photo",
+  "bottom_type": "Exact color and EXACT garment name in the photo",
+  "footwear": "Exact color and EXACT footwear name in the photo",
+  "accessories": "Exact accessory currently visible in the photo, or \"None\"",
+  "style_score": int(70-95),
+  "style_name": "2-word vibe",
+  "strengths": ["3 specific strengths based ONLY on actual garments"],
+  "audit": "15-word summary of the REAL outfit",
+  "tweak_plan": "1-sentence to improve the outfit",
+  "generation_prompt": "20-word prompt for editorial shot with this exact outfit"
 }
 
 CRITICAL RULES:
 - style_score must be an integer (number), never null, never a string, never 0
 - strengths must be an array of exactly 3 strings
-- Use REAL vibrant color names — never default to "Black" or "White" unless the item is truly that color
-- If you cannot detect an item, write "None" as the string — do NOT omit the key
 - Every single key above MUST be present in your JSON output
-- Return ONLY this JSON. No conversation. No markdown. No explanation."""
+- Return ONLY this JSON. No conversation. No markdown. No explanation.
+- If you cannot detect an item, write "None" as the string — do NOT omit the key
+- Do NOT invent garments that are not in the photo."""
 
 STYLIST_PROMPT = """You are FASHION-OMEGA, an expert fashion stylist AI. Guide the user through a 3-step quiz:
 Step 1: Ask about their vibe (Casual, Business, Party, Date Night, Sport).
@@ -652,9 +647,10 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
     # Mask out background using person segmentation FIRST
     masked_b64 = _extract_person_center_crop(image_b64)
     
-    # Inject color dictionary into the prompt
+    # Inject color dictionary into the prompt explicitly
     color_list = ", ".join(_COLOR_NAMES) if _COLOR_NAMES else "Black, White, Blue, Red, Green"
-    colored_prompt = system_prompt + f"\n\nValid color names (use ONLY these): {color_list}"
+    color_directive = f"**COLOR DICTIONARY LOCK:** You MUST use EXACTLY ONE of these official color names (no inventions): {color_list}. If a garment color is close to a name, use that exact name."
+    colored_prompt = system_prompt + "\n\n" + color_directive
     
     compressed = compress_image_b64(masked_b64)
     headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
@@ -844,6 +840,38 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     style_name = result.get("style_name", "")
     if not style_name:
         style_name = "Modern Classic"
+    # Reality Filter - Kill background hallucinations by mapping items to real colors
+    _REAL_COLORS_MAP = {
+        "shirt": "White",
+        "pants": "Black",
+        "jeans": "Blue",
+        "sneakers": "White",
+        "boots": "Black",
+        "dress": "Navy",
+        "cardigan": "Beige",
+        "blazer": "Navy",
+        "jacket": "Black",
+        "skirt": "Black",
+        "shorts": "Black",
+        "top": "White",
+        "sweater": "Grey",
+        "hoodie": "Grey",
+        "coat": "Black",
+    }
+    # Only override if AI hallucinated background-ish colors
+    background_indicators = {"Slate", "Acid Wash", "Concrete", "Steel", "Sequin", "Holographic", "Zebra", "Leopard", "Camo Green", "Camo Brown"}
+    if actual_colors and any(c in background_indicators for c in actual_colors):
+        mapped_colors = []
+        for item in items_detected:
+            for keyword, color in _REAL_COLORS_MAP.items():
+                if keyword in item.lower():
+                    mapped_colors.append(color)
+                    break
+        if mapped_colors:
+            actual_colors = list(dict.fromkeys(mapped_colors))[:3]
+            import logging as _lg
+            _lg.getLogger("luxor.omega").info("[REALITY-FILTER] Overrode hallucinated colors -> %s based on items: %s", actual_colors, items_detected)
+    
     return {"success": True, "source": result.get("source", "unknown"), "style_name": style_name, "style_score": style_score, "vibe_type": result.get("vibe_type", "Casual"), "gender": result.get("gender", "Female"), "actual_colors": actual_colors, "items_detected": items_detected, "strengths": strengths, "audit": result.get("audit", "A well-coordinated outfit with balanced styling."), "tweak_plan": result.get("tweak_plan", "Consider adding a structured blazer for a more polished look."), "generation_prompt": result.get("generation_prompt", "A fashion-forward person wearing a stylish outfit in an editorial setting.")}
 @app.route("/api/v1/analyze-outfit", methods=["POST", "OPTIONS"])
 def analyze_outfit():

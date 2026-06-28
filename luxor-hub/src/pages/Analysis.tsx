@@ -45,69 +45,6 @@ interface SavedAnalysis {
   created_at: string;
 }
 
-/* ------------------------------------------------------------------ */
-/*  SVG Circular Score                                                 */
-/* ------------------------------------------------------------------ */
-function CircularScore({ score, size = 112 }: { score: number | null; size?: number }) {
-  const isNA = score === null || score === undefined || score === 0;
-  const r = (size - 12) / 2;
-  const circ = 2 * Math.PI * r;
-  const offset = isNA ? circ : circ - (score / 100) * circ;
-  const [animatedOffset, setOffset] = useState(circ);
-  useEffect(() => {
-    const id = setTimeout(() => setOffset(offset), 300);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line
-  }, [score]);
-
-  return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <defs>
-          <linearGradient id="goldArc" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#C6A55C" />
-            <stop offset="100%" stopColor="#E8D5A3" />
-          </linearGradient>
-        </defs>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth="6" />
-        <motion.circle
-          cx={size / 2} cy={size / 2} r={r} fill="none" stroke="url(#goldArc)" strokeWidth="6"
-          strokeLinecap="round"
-          strokeDasharray={circ}
-          initial={{ strokeDashoffset: circ }}
-          animate={{ strokeDashoffset: isNA ? circ : animatedOffset }}
-          transition={{ duration: 1.5, ease: "easeOut" }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        {isNA ? (
-          <motion.span
-            className="text-lg font-bold text-muted-foreground/40"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-          >
-            N/A
-          </motion.span>
-        ) : (
-          <>
-            <motion.span
-              className="text-2xl font-bold gold-text"
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.8, type: "spring" }}
-            >
-              {score}
-            </motion.span>
-          </>
-        )}
-        <span className="text-[9px] text-muted-foreground -mt-1">/ 100</span>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Footer (shared)                                                    */
 /* ------------------------------------------------------------------ */
 function Footer() {
