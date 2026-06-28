@@ -360,34 +360,31 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
-SACRED_PROMPT = """You are a hyper-rigorous fashion CLASSIFICATION AI, not a generative AI. You MUST NOT invent or guess clothing items. You MUST ONLY describe what is VISIBLE in the photo.
+SACRED_PROMPT = """ABSOLUTE REALITY RULES — YOU ARE A CLASSIFICATION AI, NOT GENERATIVE:
 
-**CRITICAL HALLUCINATION PREVENTION RULES:**
-1. IGNORE 100% OF BACKGROUND. Pavement, concrete, walls, trees, sky, stairs = IGNORE.
-2. ONLY describe garments you can ACTUALLY SEE. Do NOT invent a "Knit Sweater" if the photo shows a T-shirt.
-3. COLORS must be EXACT. If the shirt is white, say "White T-Shirt". Not "Cream", not "Ivory".
-4. If a body part or garment is not visible, set it to "None" — do NOT guess.
-5. Do NOT describe fabric texture or material unless it is completely obvious.
+1. COLORS MUST BE EXACTLY WHAT YOU SEE IN THE PHOTO. If the shirt is BLUE, say "Blue Shirt". NOT "Navy", NOT "Teal", NOT "Azure". EXACT color you see.
+2. GARMENTS MUST BE EXACTLY WHAT YOU SEE. If you see a T-SHIRT, say "T-Shirt". NOT "Sweater", NOT "Blouse".
+3. NEVER INVENT COLORS OR GARMENTS. If you are unsure about an item, set it to "None".
+4. BACKGROUND IS REMOVED — you will see the person on a WHITE background. IGNORE the white background.
+5. FOCUS ONLY on the person's clothing. Describe the EXACT color and EXACT garment type.
 
-The photo has been preprocessed to REMOVE THE BACKGROUND. You will see the person isolated on a WHITE background. IGNORE THE WHITE BACKGROUND and focus ONLY on the person's clothing.
-
-Return ONLY this EXACT JSON. No conversation. No markdown. No explanation.
+Return this JSON. No conversation. No markdown. No invented data.
 {
   "gender": "Female" or "Male",
-  "vibe_type": "exact vibe category from: Casual, Formal, Business, Sporty, Date Night, Party, Bohemian, Streetwear, Minimalist, Vintage",
-  "top_type": "EXACT color and EXACT garment type visible - or \"None\" if not visible",
-  "bottom_type": "EXACT color and EXACT garment type visible - or \"None\" if not visible",
-  "footwear": "EXACT color and EXACT footwear visible - or \"None\" if not visible",
-  "accessories": "EXACT accessory visible - or \"None\" if none",
+  "vibe_type": "Casual, Formal, Business, Sporty, Date Night, Party, Bohemian, Streetwear, Minimalist, Vintage",
+  "top_type": "EXACT color + EXACT garment type (e.g., "Blue T-Shirt") — or "None" if not visible",
+  "bottom_type": "EXACT color + EXACT garment type — or "None" if not visible",
+  "footwear": "EXACT color + EXACT footwear — or "None" if not visible",
+  "accessories": "EXACT accessory — or "None"",
   "style_score": int(70-95),
-  "style_name": "2-word vibe",
-  "strengths": ["3 specific strengths based ONLY on actual garments"],
-  "audit": "15-word summary of the REAL outfit ONLY",
-  "tweak_plan": "1-sentence to improve based on actual detected items",
-  "generation_prompt": "20-word prompt for editorial shot with this exact outfit"
+  "style_name": "2-word style vibe",
+  "strengths": ["3 REAL strengths based on the ACTUAL garments you see"],
+  "audit": "summary of the REAL outfit (max 15 words)",
+  "tweak_plan": "1 improvement suggestion",
+  "generation_prompt": "20-word editorial prompt"
 }
 
-CRITICAL: style_score must be integer, strengths must be array of 3, every key must be present. Return ONLY JSON. Do NOT invent garments."""
+CRITICAL: style_score=integer, strengths=array[3]. Every key present. ONLY JSON. REAL colors only. NEVER invent."""
 
 STYLIST_PROMPT = """You are FASHION-OMEGA, an expert fashion stylist AI. Guide the user through a 3-step quiz:
 Step 1: Ask about their vibe (Casual, Business, Party, Date Night, Sport).
@@ -542,11 +539,12 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
         pixel_array = np.array(img)
         pixel_data = pixel_array.reshape(-1, 3).tolist()
 
-        # Filter out near-black pixels (background from person masking) and near-white (overexposed)
-        pixel_data = [p for p in pixel_data if not (p[0] < 20 and p[1] < 20 and p[2] < 20)]
-        # Also filter out the light grey background (195-205) used in person masking
-        pixel_data = [p for p in pixel_data if not (195 < p[0] < 210 and 195 < p[1] < 210 and 195 < p[2] < 210)]
-        pixel_data = [p for p in pixel_data if not (p[0] > 240 and p[1] > 240 and p[2] > 240)]
+        # Filter out near-black pixels (shadows/edges) and white background (RGB 255)
+        pixel_data = [p for p in pixel_data if not (p[0] < 25 and p[1] < 25 and p[2] < 25)]
+        # Filter out white background (RGB 255) used in person masking
+        pixel_data = [p for p in pixel_data if not (p[0] > 230 and p[1] > 230 and p[2] > 230)]
+        # Filter out near-grey pixels that are likely background artifacts
+        pixel_data = [p for p in pixel_data if not (abs(p[0] - p[1]) < 15 and abs(p[1] - p[2]) < 15 and abs(p[0] - p[2]) < 15 and p[0] > 150)]
         if not pixel_data:
             return []
 
@@ -585,26 +583,12 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
 
 def _validate_colors_with_pixels(ai_colors: List[str], pixel_colors: List[str]) -> List[str]:
     """
-    Aggressively override AI colors if they don't match pixel analysis.
-    Now: if pixel analysis returns at least 2 distinct colors, we always use them.
+    Pixel colors are the TRUTH — they come from the actual masked image (person only).
+    Always prefer pixel colors over AI hallucinated colors.
     """
-    if not pixel_colors:
-        return ai_colors
-    if not ai_colors:
+    if pixel_colors and len(pixel_colors) >= 1:
+        _log.info("[COLOR] Using REAL pixel colors: %s (AI said: %s)", pixel_colors, ai_colors)
         return pixel_colors
-
-    # Always trust pixel colors if we got at least 2 good matches
-    if len(pixel_colors) >= 2:
-        _log.info("[COLOR] Pixel analysis overrode AI colors: %s → %s", ai_colors, pixel_colors)
-        return pixel_colors
-
-    # Fallback: if AI colors are generic and pixels are specific
-    generic = {"black", "white", "grey", "gray", "beige"}
-    ai_set = {c.lower() for c in ai_colors}
-    if ai_set.issubset(generic) and len(pixel_colors) >= 1:
-        _log.info("[COLOR] Overriding generic AI colors with pixel-detected: %s", pixel_colors)
-        return pixel_colors
-
     return ai_colors
 
 def _extract_image_features(image_b64: str) -> str:
@@ -820,48 +804,51 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
         val = result.get(key, "")
         if val and val != "None" and val.lower() != "none":
             items_detected.append(val)
+    global _image_b64_cache
+
+    # === STEP 1: Extract REAL colors from the masked image pixels (person only) ===
+    pixel_colors = _get_dominant_colors_from_pixels(_image_b64_cache) if _image_b64_cache else []
+
+    # === STEP 2: If pixel analysis got REAL colors, use them as the TRUTH ===
     actual_colors = result.get("actual_colors", [])
     if not actual_colors or not isinstance(actual_colors, list):
         actual_colors = []
+    if pixel_colors and len(pixel_colors) >= 1:
+        actual_colors = pixel_colors
+        _log.info("[MAP] Using REAL pixel colors: %s (ignored AI: %s)", pixel_colors, result.get("actual_colors", []))
+    else:
+        # Fallback: use AI colors, but validate them
+        if pixel_colors:
+            actual_colors = _validate_colors_with_pixels(actual_colors, pixel_colors)
 
-    # Validate AI colors against actual pixel data
-    global _image_b64_cache
-    pixel_colors = _get_dominant_colors_from_pixels(_image_b64_cache) if _image_b64_cache else []
-    if pixel_colors:
-        actual_colors = _validate_colors_with_pixels(actual_colors, pixel_colors)
-
+    # === STEP 3: If still no colors, smart fallback based on items ===
     if not actual_colors:
-        # Smart fallback based on items detected
         default_colors = ["Black", "White"]
         for item in items_detected:
             item_lower = item.lower()
             if "floral" in item_lower or "print" in item_lower or "pattern" in item_lower:
-                default_colors = ["Navy", "Teal", "White"]
-                break
+                default_colors = ["Navy", "Teal", "White"]; break
             elif "jeans" in item_lower or "denim" in item_lower:
-                default_colors = ["Blue", "White", "Tan"]
-                break
+                default_colors = ["Blue", "White", "Tan"]; break
             elif "leather" in item_lower:
-                default_colors = ["Black", "Brown", "Gold"]
-                break
+                default_colors = ["Black", "Brown", "Gold"]; break
             elif "silk" in item_lower or "satin" in item_lower:
-                default_colors = ["Burgundy", "Blush", "Gold"]
-                break
+                default_colors = ["Burgundy", "Blush", "Gold"]; break
             elif "cotton" in item_lower or "linen" in item_lower:
-                default_colors = ["White", "Beige", "Navy"]
-                break
+                default_colors = ["White", "Beige", "Navy"]; break
         actual_colors = default_colors
     strengths = result.get("strengths", [])
-    if not strengths or not isinstance(strengths, list) or len(strengths) < 3:
-        detected = [s for s in [result.get(k, "") for k in ["top_type", "bottom_type", "footwear", "accessories"]] if s and s != "None"]
+    # ALWAYS generate strengths from REAL items detected (not AI hallucinated ones)
+    detected = [s for s in [result.get(k, "") for k in ["top_type", "bottom_type", "footwear", "accessories"]] if s and s != "None"]
+    if detected and len(detected) >= 2:
         strengths = []
-        if detected:
-            for i, d in enumerate(detected[:3]):
-                strengths.append(f"Well-chosen {d}")
-        if len(strengths) < 3 and items_detected:
+        for i, d in enumerate(detected[:3]):
+            strengths.append(f"Well-chosen {d}")
+    elif not strengths or not isinstance(strengths, list) or len(strengths) < 3:
+        if items_detected:
+            strengths = []
             for item in items_detected[:3]:
-                if len(strengths) < 3:
-                    strengths.append(f"Chosen {item.lower()}")
+                strengths.append(f"Chosen {item.lower()}")
         while len(strengths) < 3:
             strengths.append("Well-balanced proportions")
     style_score = result.get("style_score")
