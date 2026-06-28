@@ -13,7 +13,7 @@ import urllib.parse
 import uuid
 from concurrent.futures import TimeoutError
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Any, Optional, Dict, List
 
 import requests
 from flask import Flask, request, jsonify
@@ -34,7 +34,6 @@ except ImportError:
 from dotenv import load_dotenv
 
 # Qdrant + Vercel Blob
-
 try:
     from qdrant_client import QdrantClient
     from qdrant_client.http import models as qdrant_models
@@ -71,7 +70,6 @@ MIMO_API_KEY = os.getenv("MIMO_API_KEY", "sk-sryom8h5q2pvhbuibrgq5kfpnmqxrnuv5vj
 MIMO_API_URL = "https://api.xiaomimimo.com/v1/chat/completions"
 MIMO_VISION_MODEL = os.getenv("MIMO_VISION_MODEL", "mimo-v2-omni")
 MIMO_TEXT_MODEL = os.getenv("MIMO_TEXT_MODEL", "mimo-v2.5-pro")
-# Single provider: Xiaomi MiMo API (no fallback chains)
 CIPHER_MAX_TOKENS = int(os.getenv("CIPHER_MAX_TOKENS", "1200"))
 PORT = int(os.getenv("PORT", "5000"))
 
@@ -259,15 +257,17 @@ def _get_qdrant_closet() -> Optional[QdrantClient]:
     if _qdrant_closet is None and QDRANT_URL and QDRANT_API_KEY:
         try:
             _qdrant_closet = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=10)
-            _ensure_closet_collection(_qdrant_closet)
-            _log.info("[QDRANT] Closet client ready")
+            if _qdrant_closet is not None:  # <--- CRITICAL FIX: Prevents crash if connection failed
+                _ensure_closet_collection(_qdrant_closet)
+                _log.info("[QDRANT] Closet client ready")
         except Exception as exc:
             _log.warning("[QDRANT] Init failed: %s", exc)
             _qdrant_closet = None
     return _qdrant_closet
 
-def _ensure_closet_collection(client: Optional[QdrantClient]):
-    if client is None or qdrant_models is None:
+def _ensure_closet_collection(client: QdrantClient):
+    if qdrant_models is None:
+        _log.warning("[QDRANT] qdrant_models not available, skipping collection creation")
         return
     try:
         collections = client.get_collections()
@@ -485,26 +485,26 @@ def compress_image_b64(image_b64: str) -> str:
 def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> List[str]:
     """
     Extract dominant color names from image pixels using centroid matching.
-    Returns color names from _COLOR_MAPPINGS that best match the actual pixels.
+    This now runs on the MASKED image (person only), so background shadows are gone.
     """
     global _COLOR_MAPPINGS, _COLOR_NAMES
     try:
-        raw = base64.b64decode(image_b64)
+        # First, mask out the background so we only analyze the person's clothing
+        masked_b64 = _extract_person_center_crop(image_b64)
+        raw = base64.b64decode(masked_b64)
         img = Image.open(io.BytesIO(raw))
         # Resize for speed
         img = img.resize((64, 96), Image.Resampling.LANCZOS)
-        # Force RGB mode so type checker knows pixels are 3-tuples
         if img.mode != 'RGB':
             img = img.convert('RGB')
         pixel_array = np.array(img)
         pixel_data = pixel_array.reshape(-1, 3).tolist()
-        
+
         # Simple color quantization using average of similar pixels
-        # Quantize to 32-color buckets
         quantized = [(r // 32 * 32, g // 32 * 32, b // 32 * 32) for r, g, b in pixel_data]
         color_counts = Counter(quantized)
         top_pixels = [item[0] for item in color_counts.most_common(num_colors + 3)]
-        
+
         # Match each dominant pixel to closest color name in dictionary
         matched_colors = []
         for r, g, b in top_pixels:
@@ -520,15 +520,14 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
                     best_name = name
             if best_name and best_dist < 120:  # Only accept if reasonably close
                 matched_colors.append(best_name)
-        
-        # Deduplicate while preserving order
+
+        # Deduplicate and return
         seen = set()
         unique_colors = []
         for c in matched_colors:
             if c not in seen:
                 seen.add(c)
                 unique_colors.append(c)
-        
         return unique_colors[:num_colors]
     except Exception as exc:
         _log.warning("[PIXEL] Error: %s", exc)
@@ -536,19 +535,26 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
 
 def _validate_colors_with_pixels(ai_colors: List[str], pixel_colors: List[str]) -> List[str]:
     """
-    If the AI hallucinated colors that don't match pixel analysis, override with pixel results.
+    Aggressively override AI colors if they don't match pixel analysis.
+    Now: if pixel analysis returns at least 2 distinct colors, we always use them.
     """
     if not pixel_colors:
         return ai_colors
     if not ai_colors:
         return pixel_colors
-    # Use pixel colors as truth, but keep AI's colors if they somewhat match
-    # Simple approach: if AI returned very generic colors (Black/White) but pixels found specific ones, use pixels
+
+    # Always trust pixel colors if we got at least 2 good matches
+    if len(pixel_colors) >= 2:
+        _log.info("[COLOR] Pixel analysis overrode AI colors: %s → %s", ai_colors, pixel_colors)
+        return pixel_colors
+
+    # Fallback: if AI colors are generic and pixels are specific
     generic = {"black", "white", "grey", "gray", "beige"}
     ai_set = {c.lower() for c in ai_colors}
-    if ai_set.issubset(generic) and len(pixel_colors) >= 2:
+    if ai_set.issubset(generic) and len(pixel_colors) >= 1:
         _log.info("[COLOR] Overriding generic AI colors with pixel-detected: %s", pixel_colors)
         return pixel_colors
+
     return ai_colors
 
 def _extract_image_features(image_b64: str) -> str:
@@ -567,10 +573,10 @@ def _extract_image_features(image_b64: str) -> str:
         for r, g, b in pixel_data:
             # Map to nearest color name
             quantized.append((r // 64 * 64, g // 64 * 64, b // 64 * 64))
-        
+
         color_counts = Counter(quantized)
         top_colors = color_counts.most_common(5)
-        
+
         # Convert RGB to color names
         color_names = []
         for (r, g, b), count in top_colors:
@@ -608,29 +614,29 @@ def _extract_image_features(image_b64: str) -> str:
                 name = f"rgb({r},{g},{b})"
             if name not in color_names:
                 color_names.append(name)
-        
+
         # Determine if image has a person-like shape (simple heuristic)
         w, h = img.size
         aspect = w / h
-        
+
         features = []
         features.append(f"Image aspect ratio: {aspect:.2f}")
         features.append(f"Dominant colors: {', '.join(color_names)}")
         features.append(f"Image size: {w}x{h} pixels")
-        
+
         # Simple brightness analysis
         gray = img.convert('L')
         raw_pixels = [p for p in gray.getdata()]
         avg_brightness = sum(raw_pixels) / len(raw_pixels)
         features.append(f"Average brightness: {avg_brightness:.0f}/255")
-        
+
         if avg_brightness < 80:
             features.append("Lighting: Dark")
         elif avg_brightness > 180:
             features.append("Lighting: Bright")
         else:
             features.append("Lighting: Normal")
-        
+
         return "\n".join(features)
     except Exception as exc:
         _log.warning("[FEATURES] %s", exc)
@@ -640,18 +646,18 @@ def _extract_image_features(image_b64: str) -> str:
 def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, temperature: float = 0.2) -> Optional[Dict[str, Any]]:
     if not MIMO_API_KEY:
         return None
-    
+
     # Mask out background using person segmentation FIRST
     masked_b64 = _extract_person_center_crop(image_b64)
-    
+
     # Inject color dictionary into the prompt explicitly
     color_list = ", ".join(_COLOR_NAMES) if _COLOR_NAMES else "Black, White, Blue, Red, Green"
     color_directive = f"**COLOR DICTIONARY LOCK:** You MUST use EXACTLY ONE of these official color names (no inventions): {color_list}. If a garment color is close to a name, use that exact name."
     colored_prompt = system_prompt + "\n\n" + color_directive
-    
+
     compressed = compress_image_b64(masked_b64)
     headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
-    
+
     # Try vision model with masked image data
     vision_payload = {
         "model": MIMO_VISION_MODEL,
@@ -675,7 +681,7 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
                 return result
     except Exception as exc:
         _log.error("[MIMO-VISION] %s", exc)
-    
+
     # Text fallback with extracted features
     features = _extract_image_features(image_b64)
     _log.info("[FEATURES] Extracted: %s", features[:100])
@@ -699,16 +705,16 @@ Return the SAME JSON format as requested above. If unsure about specific items, 
                 return result
     except Exception as exc:
         _log.error("[MIMO-VISION-FALLBACK] %s", exc)
-    
+
     return None
 
 def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Optional[Dict[str, Any]]:
     if not MIMO_API_KEY:
         return None
     headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
-    
+
     models_to_try = [MIMO_TEXT_MODEL]
-    
+
     for model in models_to_try:
         groq_messages = []
         if system_prompt:
@@ -789,13 +795,13 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     actual_colors = result.get("actual_colors", [])
     if not actual_colors or not isinstance(actual_colors, list):
         actual_colors = []
-    
+
     # Validate AI colors against actual pixel data
     global _image_b64_cache
     pixel_colors = _get_dominant_colors_from_pixels(_image_b64_cache) if _image_b64_cache else []
     if pixel_colors:
         actual_colors = _validate_colors_with_pixels(actual_colors, pixel_colors)
-    
+
     if not actual_colors:
         # Smart fallback based on items detected
         default_colors = ["Black", "White"]
@@ -868,8 +874,9 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
             actual_colors = list(dict.fromkeys(mapped_colors))[:3]
             import logging as _lg
             _lg.getLogger("luxor.omega").info("[REALITY-FILTER] Overrode hallucinated colors -> %s based on items: %s", actual_colors, items_detected)
-    
+
     return {"success": True, "source": result.get("source", "unknown"), "style_name": style_name, "style_score": style_score, "vibe_type": result.get("vibe_type", "Casual"), "gender": result.get("gender", "Female"), "actual_colors": actual_colors, "items_detected": items_detected, "strengths": strengths, "audit": result.get("audit", "A well-coordinated outfit with balanced styling."), "tweak_plan": result.get("tweak_plan", "Consider adding a structured blazer for a more polished look."), "generation_prompt": result.get("generation_prompt", "A fashion-forward person wearing a stylish outfit in an editorial setting.")}
+
 @app.route("/api/v1/analyze-outfit", methods=["POST", "OPTIONS"])
 def analyze_outfit():
     if request.method == "OPTIONS":
@@ -1092,44 +1099,44 @@ def dressing_generate():
 def upload_color_pdf():
     if request.method == "OPTIONS":
         return "", 204
-    
+
     global _COLOR_MAPPINGS, _COLOR_NAMES
-    
+
     # Check if file was uploaded
     if "file" not in request.files:
         return jsonify({"success": False, "error": "No file uploaded. Use multipart form with field 'file'."}), 400
-    
+
     file = request.files["file"]
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         return jsonify({"success": False, "error": "File must be a PDF."}), 400
-    
+
     try:
         pdf_bytes = file.read()
         if PdfReader is None:
-            return jsonify({"success": False, "error": "pypdf not installed"}), 500
+            return jsonify({"success": False, "error": "pypdf is not installed or PdfReader is None"}), 500
         reader = PdfReader(io.BytesIO(pdf_bytes))
         extracted_text = ""
         for page in reader.pages:
             text = page.extract_text()
             if text:
                 extracted_text += text + "\n"
-        
+
         if not extracted_text.strip():
             return jsonify({
                 "success": False, 
                 "error": "Could not extract text from PDF. It may be a scanned image PDF.",
                 "note": "The built-in color dictionary with 130 fashion colors is already loaded."
             }), 400
-        
+
         found_colors = {}
-        
+
         # Pattern 1: "ColorName: #HEX" or "ColorName - #HEX"
         for match in re.finditer(r'([A-Za-z]+(?:\s+[A-Za-z]+)*)\s*[:\-]\s*#([0-9A-Fa-f]{6})', extracted_text):
             name = match.group(1).strip()
             hex_code = "#" + match.group(2).upper()
             if name and len(name) > 1:
                 found_colors[name] = hex_code
-        
+
         # Pattern 2: "#HEX ColorName" 
         if not found_colors:
             for match in re.finditer(r'#([0-9A-Fa-f]{6})\\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)', extracted_text):
@@ -1137,7 +1144,7 @@ def upload_color_pdf():
                 name = match.group(2).strip()
                 if name and len(name) > 1:
                     found_colors[name] = hex_code
-        
+
         # Pattern 3: Lines with hex codes and color names
         if not found_colors:
             for match in re.finditer(r'([A-Za-z]+(?:\s+[A-Za-z]+)*)[,\s]+#([0-9A-Fa-f]{6})', extracted_text):
@@ -1145,7 +1152,7 @@ def upload_color_pdf():
                 hex_code = "#" + match.group(2).upper()
                 if name and len(name) > 1:
                     found_colors[name] = hex_code
-        
+
         if found_colors:
             # Merge with existing dictionary
             _COLOR_MAPPINGS.update(found_colors)
@@ -1166,7 +1173,7 @@ def upload_color_pdf():
                 "extracted_preview": extracted_text[:500],
                 "note": "The built-in color dictionary with 130 fashion colors is already loaded."
             }), 400
-            
+
     except Exception as exc:
         _log.error("[COLOR-PDF] Upload error: %s", exc)
         return jsonify({"success": False, "error": f"PDF processing error: {str(exc)}"}), 500
@@ -1205,7 +1212,7 @@ def debug_analyze():
             return jsonify({"status": "error", "code": resp.status_code, "model": model, "text": resp.text[:500]})
         except Exception as e:
             continue
-    
+
     # Text fallback for debug
     text_prompt = f"{SACRED_PROMPT}\n\nVision API unavailable. Using extracted features:\n{features}\n\nReturn the JSON as requested."
     payload = {"model": MIMO_TEXT_MODEL, "messages": [{"role": "user", "content": text_prompt}], "max_tokens": CIPHER_MAX_TOKENS}
@@ -1223,7 +1230,8 @@ def health():
     return jsonify({
         "status": "ok",
         "service": "luxor-fashion-omega-v5",
-        "mimo_configured": bool(MIMO_API_KEY), "mimo_key_prefix": MIMO_API_KEY[:8] if MIMO_API_KEY else "",
+        "mimo_configured": bool(MIMO_API_KEY),
+        "mimo_key_prefix": MIMO_API_KEY[:8] if MIMO_API_KEY else "",
         "blob_configured": bool(BLOB_READ_WRITE_TOKEN),
         "qdrant_configured": bool(QDRANT_URL and QDRANT_API_KEY),
         "closet_items": closet_count,
