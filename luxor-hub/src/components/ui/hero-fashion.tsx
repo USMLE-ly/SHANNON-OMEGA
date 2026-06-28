@@ -1,7 +1,6 @@
 "use client";
 import { motion } from "motion/react";
 import { AnimatedGradient } from "@/components/ui/animated-gradient-with-svg";
-import { ParticleTextEffect } from "@/components/ui/interactive-text-particle";
 
 interface FashionHeroProps {
   styleName?: string;
@@ -173,15 +172,11 @@ export function FashionHero({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              {/* SECTION 1: TITLE (Interactive Particle Text) */}
-              <div className="relative w-full h-20 md:h-28 flex items-center justify-center overflow-hidden bg-black/40 rounded-xl border border-white/10 flex-shrink-0">
-                <ParticleTextEffect
-                  text={styleName || "MODERN CLASSIC"}
-                  colors={['ff6b6b', 'feca57', '48dbfb', '1dd1a1']}
-                  className="absolute inset-0 w-full h-full"
-                  animationForce={100}
-                  particleDensity={6}
-                />
+              {/* SECTION 1: TITLE (Gradient Text) */}
+              <div className="relative w-full py-4 md:py-6 flex items-center justify-center overflow-hidden rounded-xl border border-white/10 flex-shrink-0 bg-gradient-to-r from-purple-900/60 via-blue-900/60 to-cyan-900/60">
+                <h2 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white leading-tight tracking-tight text-center px-4">
+                  {styleName}
+                </h2>
               </div>
 
               {/* SECTION 2: ITEMS DETECTED (Sky Blue Gradient) */}
