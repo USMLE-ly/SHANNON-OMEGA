@@ -181,22 +181,22 @@ export function FashionHero({
                 <div className="space-y-1.5 text-sm">
                   {topType && <div className="flex items-center gap-2">
                     <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Top</span>
-                    <span className={\`w-2.5 h-2.5 rounded-full inline-block \${colorSwatchMap[topType.split(' ')[0]] || 'bg-gray-400'}\`} />
+                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[topType.split(' ')[0]] || 'bg-gray-400'}`} />
                     <span className="text-foreground/90">{topType}</span>
                   </div>}
                   {bottomType && <div className="flex items-center gap-2">
                     <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Bottom</span>
-                    <span className={\`w-2.5 h-2.5 rounded-full inline-block \${colorSwatchMap[bottomType.split(' ')[0]] || 'bg-gray-400'}\`} />
+                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[bottomType.split(' ')[0]] || 'bg-gray-400'}`} />
                     <span className="text-foreground/90">{bottomType}</span>
                   </div>}
                   {footwear && <div className="flex items-center gap-2">
                     <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Shoes</span>
-                    <span className={\`w-2.5 h-2.5 rounded-full inline-block \${colorSwatchMap[footwear.split(' ')[0]] || 'bg-gray-400'}\`} />
+                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[footwear.split(' ')[0]] || 'bg-gray-400'}`} />
                     <span className="text-foreground/90">{footwear}</span>
                   </div>}
                   {accessories && accessories !== "None" && <div className="flex items-center gap-2">
                     <span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Acc</span>
-                    <span className={\`w-2.5 h-2.5 rounded-full inline-block \${colorSwatchMap[accessories.split(' ')[0]] || 'bg-gray-400'}\`} />
+                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${colorSwatchMap[accessories.split(' ')[0]] || 'bg-gray-400'}`} />
                     <span className="text-foreground/90">{accessories}</span>
                   </div>}
                 </div>
