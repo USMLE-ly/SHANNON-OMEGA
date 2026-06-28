@@ -24,6 +24,10 @@ import { FashionHero } from "@/components/ui/hero-fashion";
 interface OutfitData {
   style_name: string;
   vibe_type?: string;
+  top_type?: string;
+  bottom_type?: string;
+  footwear?: string;
+  accessories?: string;
   actual_colors: string[];
   items_detected: string[];
   strengths: string[];
@@ -449,6 +453,10 @@ export default function Analysis() {
         tweak_plan: fnData.tweak_plan || '',
         generation_prompt: fnData.generation_prompt || '',
         vibe_type: fnData.vibe_type || '',
+        top_type: fnData.top_type || '',
+        bottom_type: fnData.bottom_type || '',
+        footwear: fnData.footwear || '',
+        accessories: fnData.accessories || '',
         style_score: fnData.style_score || 0,
         seasonalFit: fnData.seasonalFit || '',
       };
@@ -638,6 +646,10 @@ export default function Analysis() {
                     tweakPlan={data.tweak_plan}
                     imageUrl={imagePreview}
                     vibeType={data.vibe_type}
+                    topType={data.top_type}
+                    bottomType={data.bottom_type}
+                    footwear={data.footwear}
+                    accessories={data.accessories}
                   />
                 </motion.div>
 

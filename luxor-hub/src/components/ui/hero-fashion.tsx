@@ -11,6 +11,10 @@ interface FashionHeroProps {
   tweakPlan?: string;
   imageUrl?: string;
   vibeType?: string;
+  topType?: string;
+  bottomType?: string;
+  footwear?: string;
+  accessories?: string;
 }
 
 const colorSwatchMap: Record<string, string> = {
@@ -40,6 +44,10 @@ export function FashionHero({
   tweakPlan = "",
   imageUrl,
   vibeType,
+  topType = "",
+  bottomType = "",
+  footwear = "",
+  accessories = "",
 }: FashionHeroProps) {
   const isNA = styleScore === null || styleScore === undefined || styleScore === 0;
   const showMindMap = !imageUrl && vibeType;
@@ -168,8 +176,17 @@ export function FashionHero({
                 </div>
               </div>
 
-              {/* Items detected */}
-              {itemsDetected.length > 0 && (
+              {/* Items detected - detailed labels */}
+              {(topType || bottomType || footwear) && (
+                <div className="space-y-1.5 text-sm">
+                  {topType && <div className="flex items-center gap-2"><span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Top</span><span className="text-foreground/90">{topType}</span></div>}
+                  {bottomType && <div className="flex items-center gap-2"><span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Bottom</span><span className="text-foreground/90">{bottomType}</span></div>}
+                  {footwear && <div className="flex items-center gap-2"><span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Shoes</span><span className="text-foreground/90">{footwear}</span></div>}
+                  {accessories && <div className="flex items-center gap-2"><span className="text-muted-foreground text-[10px] min-w-[40px] uppercase tracking-wider">Acc</span><span className="text-foreground/90">{accessories}</span></div>}
+                </div>
+              )}
+              {/* Fallback plain items */}
+              {!(topType || bottomType || footwear) && itemsDetected.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {itemsDetected.map((item, i) => (
                     <span key={i} className="px-3 py-1 rounded-full bg-zinc-800/60 border border-zinc-700/50 text-xs text-foreground/80">

@@ -71,7 +71,9 @@ MIMO_API_KEY = os.getenv("MIMO_API_KEY", "sk-sryom8h5q2pvhbuibrgq5kfpnmqxrnuv5vj
 MIMO_API_URL = "https://api.xiaomimimo.com/v1/chat/completions"
 MIMO_VISION_MODEL = os.getenv("MIMO_VISION_MODEL", "mimo-v2-omni")
 MIMO_TEXT_MODEL = os.getenv("MIMO_TEXT_MODEL", "mimo-v2.5-pro")
-CIPHER_MAX_TOKENS = int(os.getenv("CIPHER_MAX_TOKENS", "1200"))
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_VISION_MODEL = "qwen/qwen-2.5-vl-72b-instruct:free"
+CIPHER_MAX_TOKENS = int(os.getenv("CIPHER_MAX_TOKENS", "1500"))
 PORT = int(os.getenv("PORT", "5000"))
 
 # Vercel Blob
@@ -361,36 +363,30 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
-SACRED_PROMPT = """ABSOLUTE REALITY RULES — YOU ARE A CLASSIFICATION AI, NOT GENERATIVE:
+SACRED_PROMPT = """ABSOLUTE REALITY RULES — CLASSIFY, DO NOT GENERATE:
 
-1. COLORS MUST BE EXACTLY WHAT YOU SEE IN THE PHOTO. If the shirt is BLUE, say "Blue". NOT "Navy", NOT "Teal", NOT "Azure". EXACT color you see.
-2. GARMENTS MUST BE EXACTLY WHAT YOU SEE. If you see a T-SHIRT, say "T-Shirt". NOT "Sweater", NOT "Blouse", NOT "Knit Top". 
-3. PER-ITEM DETAILS: For EVERY garment visible, identify its EXACT:
-   - Type (T-Shirt, Blazer, Jeans, Shorts, Sneakers, Loafers, etc.)
-   - Color (exact single color name)
-   - Material (Cotton, Denim, Leather, Wool, Silk, etc.) if identifiable
-   - Pattern (Striped, Floral, Solid, Plaid, Graphic, etc.) if applicable
-4. NEVER INVENT COLORS OR GARMENTS. If you are unsure about an item, set it to "None".
-5. BACKGROUND IS REMOVED — you will see the person on a WHITE background. IGNORE the white background.
-6. FOCUS ONLY on the person's clothing. Describe the EXACT color and EXACT garment type.
+1. COLORS: Exact color you see. NOT "Navy" if the shirt is BLUE.
+2. GARMENTS: Exact type. T-Shirt is "T-Shirt", NOT "Sweater".
+3. PER ITEM: Identify Type, Color, Material, Pattern for every garment.
+4. NEVER invent colors or garments. Set unsure items to "None".
+5. Background is WHITE. IGNORE it. Look ONLY at clothing.
 
-Return this JSON. No conversation. No markdown. No invented data.
+Return ONLY this JSON:
 {
   "gender": "Female" or "Male",
-  "vibe_type": "Casual, Formal, Business, Sporty, Date Night, Party, Bohemian, Streetwear, Minimalist, Vintage",
-  "top_type": "EXACT color + EXACT garment type (e.g., 'Blue T-Shirt') — or 'None' if not visible",
-  "bottom_type": "EXACT color + EXACT garment type (e.g., 'Black Jeans') — or 'None' if not visible",
-  "footwear": "EXACT color + EXACT footwear (e.g., 'White Sneakers') — or 'None' if not visible",
-  "accessories": "EXACT accessory (e.g., 'Silver Watch') — or 'None'",
+  "vibe_type": "Casual | Formal | Business | Sporty | Date Night | Party | Bohemian | Streetwear | Minimalist | Vintage",
+  "top_type": "Color + Garment (e.g. 'Blue T-Shirt') or 'None'",
+  "bottom_type": "Color + Garment (e.g. 'Black Jeans') or 'None'",
+  "footwear": "Color + Footwear (e.g. 'White Sneakers') or 'None'",
+  "accessories": "Accessory or 'None'",
   "style_score": int(70-95),
-  "style_name": "2-word style vibe (e.g., 'Casual Chic')",
-  "strengths": ["3 REAL strengths based on the ACTUAL garments you see. Example: 'Navy Blue T-Shirt adds a classic touch'"],
-  "audit": "summary of the REAL outfit (max 15 words)",
-  "tweak_plan": "1 specific improvement suggestion based on the actual garments",
-  "generation_prompt": "20-word editorial prompt describing the outfit"
+  "style_name": "2-word vibe (e.g. 'Casual Chic')",
+  "strengths": ["3 real strengths", "based on actual garments", "you see in photo"],
+  "audit": "max 15 word outfit summary",
+  "tweak_plan": "1 improvement suggestion",
+  "generation_prompt": "20-word editorial prompt"
 }
-
-CRITICAL: style_score=integer 70-95, strengths=array of exactly 3 strings. Every key present. ONLY JSON. REAL colors only. NEVER invent garments or colors."""
+CRITICAL: style_score=int 70-95, strengths=array[3]. ONLY JSON. NEVER invent."""
 
 STYLIST_PROMPT = """You are FASHION-OMEGA, an expert fashion stylist AI. Guide the user through a 3-step quiz:
 Step 1: Ask about their vibe (Casual, Business, Party, Date Night, Sport).
@@ -518,7 +514,7 @@ def compress_image_b64(image_b64: str) -> str:
             ratio = 800.0 / max(w, h)
             img = img.resize((int(w * ratio), int(h * ratio)), _RESAMPLE_LANCZOS)
         buf = io.BytesIO()
-        img.convert("RGB").save(buf, format="JPEG", quality=92, optimize=True)
+        img.convert("RGB").save(buf, format="JPEG", quality=80, optimize=True)
         return base64.b64encode(buf.getvalue()).decode()
     except Exception as exc:
         _log.warning("[COMPRESS] %s — returning original", exc)
@@ -744,6 +740,7 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
         ]}],
         "max_tokens": CIPHER_MAX_TOKENS,
         "temperature": temperature,
+        "response_format": {"type": "json_object"},
     }
     try:
         _log.info("[MIMO-VISION] Trying vision model=%s", MIMO_VISION_MODEL)
@@ -759,8 +756,33 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
     except Exception as exc:
         _log.error("[MIMO-VISION] %s", exc)
 
-    # NO TEXT FALLBACK — text-only models hallucinate garments not in the photo
-    _log.warning("[MIMO-VISION] Vision model failed - returning None instead of hallucinating")
+    # === FALLBACK: Try OpenRouter as backup provider ===
+    if OPENROUTER_API_KEY:
+        try:
+            _log.info("[OPENROUTER] Trying fallback vision model=%s", OPENROUTER_VISION_MODEL)
+            or_headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}", "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
+            or_payload = {
+                "model": OPENROUTER_VISION_MODEL,
+                "messages": [{"role": "user", "content": [
+                    {"type": "text", "text": colored_prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}"}},
+                ]}],
+                "max_tokens": CIPHER_MAX_TOKENS,
+                "temperature": temperature,
+            }
+            or_resp = requests.post("https://openrouter.ai/api/v1/chat/completions", json=or_payload, headers=or_headers, timeout=60)
+            _log.info("[OPENROUTER] HTTP %s: %s", or_resp.status_code, or_resp.text[:200])
+            if or_resp.status_code == 200:
+                or_raw = or_resp.json()["choices"][0]["message"]["content"]
+                or_match = re.search(r"\{[\s\S]*\}", or_raw)
+                if or_match:
+                    or_result = json.loads(or_match.group(0))
+                    or_result["source"] = "openrouter_vision"
+                    return or_result
+        except Exception as or_exc:
+            _log.error("[OPENROUTER] %s", or_exc)
+
+    _log.warning("[MIMO-VISION] All vision models failed - returning None")
     return None
 
 def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Optional[Dict[str, Any]]:
@@ -856,35 +878,55 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
 
     # === STEP 1: Extract REAL colors from the masked image pixels (person only) ===
     pixel_colors = _get_dominant_colors_from_pixels(_image_b64_cache) if _image_b64_cache else []
+    _log.info("[MAP] Pixel extraction returned: %s", pixel_colors)
 
-    # === STEP 2: If pixel analysis got REAL colors, use them as the TRUTH ===
-    actual_colors = result.get("actual_colors", [])
-    if not actual_colors or not isinstance(actual_colors, list):
-        actual_colors = []
+    # === STEP 2: PIXEL COLORS ARE THE ABSOLUTE TRUTH — never overridden ===
     if pixel_colors and len(pixel_colors) >= 1:
         actual_colors = pixel_colors
         _log.info("[MAP] Using REAL pixel colors: %s (ignored AI: %s)", pixel_colors, result.get("actual_colors", []))
     else:
-        # Fallback: use AI colors, but validate them
+        # === STEP 3: Fallback to AI colors with validation ===
+        actual_colors = result.get("actual_colors", [])
+        if not actual_colors or not isinstance(actual_colors, list):
+            actual_colors = []
         if pixel_colors:
             actual_colors = _validate_colors_with_pixels(actual_colors, pixel_colors)
 
-    # === STEP 3: If still no colors, smart fallback based on items ===
-    if not actual_colors:
-        default_colors = ["Black", "White"]
-        for item in items_detected:
-            item_lower = item.lower()
-            if "floral" in item_lower or "print" in item_lower or "pattern" in item_lower:
-                default_colors = ["Navy", "Teal", "White"]; break
-            elif "jeans" in item_lower or "denim" in item_lower:
-                default_colors = ["Blue", "White", "Tan"]; break
-            elif "leather" in item_lower:
-                default_colors = ["Black", "Brown", "Gold"]; break
-            elif "silk" in item_lower or "satin" in item_lower:
-                default_colors = ["Burgundy", "Blush", "Gold"]; break
-            elif "cotton" in item_lower or "linen" in item_lower:
-                default_colors = ["White", "Beige", "Navy"]; break
-        actual_colors = default_colors
+        # === STEP 4: Reality filter — ONLY for AI hallucinated colors, NOT pixel colors ===
+        background_indicators = {"Concrete", "Camo Green", "Camo Brown"}
+        if actual_colors and any(c in background_indicators for c in actual_colors):
+            _REAL_COLORS_MAP = {
+                "shirt": "White", "pants": "Black", "jeans": "Blue", "sneakers": "White",
+                "boots": "Black", "dress": "Navy", "cardigan": "Beige", "blazer": "Navy",
+                "jacket": "Black", "skirt": "Black", "shorts": "Black", "top": "White",
+                "sweater": "Grey", "hoodie": "Grey", "coat": "Black",
+            }
+            mapped_colors = []
+            for item in items_detected:
+                for keyword, color in _REAL_COLORS_MAP.items():
+                    if keyword in item.lower():
+                        mapped_colors.append(color)
+                        break
+            if mapped_colors:
+                actual_colors = list(dict.fromkeys(mapped_colors))[:3]
+                _log.info("[REALITY-FILTER] Overrode hallucinated colors -> %s (items: %s)", actual_colors, items_detected)
+
+        # === STEP 5: If still no colors, smart fallback based on items ===
+        if not actual_colors:
+            default_colors = ["Black", "White"]
+            for item in items_detected:
+                item_lower = item.lower()
+                if "floral" in item_lower or "print" in item_lower or "pattern" in item_lower:
+                    default_colors = ["Navy", "Teal", "White"]; break
+                elif "jeans" in item_lower or "denim" in item_lower:
+                    default_colors = ["Blue", "White", "Tan"]; break
+                elif "leather" in item_lower:
+                    default_colors = ["Black", "Brown", "Gold"]; break
+                elif "silk" in item_lower or "satin" in item_lower:
+                    default_colors = ["Burgundy", "Blush", "Gold"]; break
+                elif "cotton" in item_lower or "linen" in item_lower:
+                    default_colors = ["White", "Beige", "Navy"]; break
+            actual_colors = default_colors
     strengths = result.get("strengths", [])
     # Ensure strengths are unique (no duplicates)
     if isinstance(strengths, list):
@@ -946,24 +988,26 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
         "hoodie": "Grey",
         "coat": "Black",
     }
-    # Reality Filter - Kill background hallucinations aggressively
-    background_indicators = {"Slate", "Acid Wash", "Concrete", "Steel", "Sequin", "Holographic", "Zebra", "Leopard", "Camo Green", "Camo Brown", "Silver", "Charcoal", "Ash"}
-    if actual_colors and any(c in background_indicators for c in actual_colors):
-        mapped_colors = []
-        # First try to map from items_detected
-        for item in items_detected:
-            for keyword, color in _REAL_COLORS_MAP.items():
-                if keyword in item.lower():
-                    mapped_colors.append(color)
-                    break
-        # If items_detected is empty or no matches, use reasonable defaults
-        if not mapped_colors:
-            mapped_colors = ["Black", "White", "Blue"]
-        actual_colors = list(dict.fromkeys(mapped_colors))[:3]
-        import logging as _lg
-        _lg.getLogger("luxor.omega").info("[REALITY-FILTER] Overrode hallucinated colors -> %s (items: %s)", actual_colors, items_detected)
 
-    return {"success": True, "source": result.get("source", "unknown"), "style_name": style_name, "style_score": style_score, "vibe_type": result.get("vibe_type", "Casual"), "gender": result.get("gender", "Female"), "actual_colors": actual_colors, "items_detected": items_detected, "strengths": strengths, "audit": result.get("audit", "A well-coordinated outfit with balanced styling."), "tweak_plan": result.get("tweak_plan", "Consider adding a structured blazer for a more polished look."), "generation_prompt": result.get("generation_prompt", "A fashion-forward person wearing a stylish outfit in an editorial setting.")}
+
+    return {
+        "success": True,
+        "source": result.get("source", "unknown"),
+        "style_name": style_name,
+        "style_score": style_score,
+        "vibe_type": result.get("vibe_type", "Casual"),
+        "gender": result.get("gender", "Female"),
+        "top_type": result.get("top_type", ""),
+        "bottom_type": result.get("bottom_type", ""),
+        "footwear": result.get("footwear", ""),
+        "accessories": result.get("accessories", ""),
+        "actual_colors": actual_colors,
+        "items_detected": items_detected,
+        "strengths": strengths,
+        "audit": result.get("audit", "A well-coordinated outfit with balanced styling."),
+        "tweak_plan": result.get("tweak_plan", "Consider adding a structured blazer for a more polished look."),
+        "generation_prompt": result.get("generation_prompt", "A fashion-forward person wearing a stylish outfit in an editorial setting."),
+    }
 
 @app.route("/api/v1/analyze-outfit", methods=["POST", "OPTIONS"])
 def analyze_outfit():
