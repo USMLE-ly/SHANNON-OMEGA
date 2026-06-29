@@ -365,28 +365,35 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 SACRED_PROMPT = """ABSOLUTE REALITY RULES — CLASSIFY, DO NOT GENERATE:
 
-1. COLORS: Exact color you see. NOT "Navy" if the shirt is BLUE.
-2. GARMENTS: Exact type. T-Shirt is "T-Shirt", NOT "Sweater".
-3. PER ITEM: Identify Type, Color, Material, Pattern for every garment.
-4. NEVER invent colors or garments. Set unsure items to "None".
-5. Background is WHITE. IGNORE it. Look ONLY at clothing.
+1. COLORS: Use EXACTLY the color of the garment. If the shirt is BLUE, write "Blue T-Shirt", NOT "Navy" or "Steel".
+2. GARMENTS: Identify the EXACT garment type. A T-Shirt is "T-Shirt", NOT "Sweater" or "Top".
+3. PER ITEM: For each garment, state its EXACT Color + Type + Material/Pattern if visible.
+4. BACKGROUND: The background has been REMOVED and replaced with WHITE. IGNORE the white. Look ONLY at the clothing on the person.
+5. COLOR LOCK: Only use precise color names from the official dictionary provided. Do NOT invent color names.
+6. NEVER hallucinate garments or colors. If something is not visible, set it to "None".
+7. REALITY CHECK: If you cannot clearly identify an item, state exactly what is partially visible. Do NOT guess.
 
-Return ONLY this JSON:
+Return ONLY this valid JSON with NO extra text:
 {
   "gender": "Female" or "Male",
   "vibe_type": "Casual | Formal | Business | Sporty | Date Night | Party | Bohemian | Streetwear | Minimalist | Vintage",
-  "top_type": "Color + Garment (e.g. 'Blue T-Shirt') or 'None'",
-  "bottom_type": "Color + Garment (e.g. 'Black Jeans') or 'None'",
-  "footwear": "Color + Footwear (e.g. 'White Sneakers') or 'None'",
-  "accessories": "Accessory or 'None'",
+  "top_type": "Exact Color + Garment (e.g. 'Blue T-Shirt') or 'None'",
+  "bottom_type": "Exact Color + Garment (e.g. 'Black Jeans') or 'None'",
+  "footwear": "Exact Color + Footwear (e.g. 'White Sneakers') or 'None'",
+  "accessories": "Exact Accessory or 'None'",
   "style_score": int(70-95),
   "style_name": "2-word vibe (e.g. 'Casual Chic')",
-  "strengths": ["3 real strengths", "based on actual garments", "you see in photo"],
-  "audit": "max 15 word outfit summary",
-  "tweak_plan": "1 improvement suggestion",
-  "generation_prompt": "20-word editorial prompt"
+  "strengths": ["3 real, specific strengths based ONLY on actual garments in the photo"],
+  "audit": "max 15 word outfit summary of the REAL clothing only",
+  "tweak_plan": "1 specific improvement suggestion based on actual outfit",
+  "generation_prompt": "20-word editorial prompt with this exact outfit"
 }
-CRITICAL: style_score=int 70-95, strengths=array[3]. ONLY JSON. NEVER invent."""
+
+CRITICAL RULES:
+- style_score=int between 70-95
+- strengths MUST be an array of exactly 3 strings
+- Each strength MUST reference a real garment visible in the image
+- ONLY output valid JSON. NO markdown. NO commentary. NO explanations."""
 
 STYLIST_PROMPT = """You are FASHION-OMEGA, an expert fashion stylist AI. Guide the user through a 3-step quiz:
 Step 1: Ask about their vibe (Casual, Business, Party, Date Night, Sport).
@@ -548,6 +555,16 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
         pixel_data = [p for p in pixel_data if not (p[0] < 3 and p[1] < 3 and p[2] < 3)]
         # Do NOT filter grey pixels — they may be actual garment colors
         if not pixel_data:
+            return []
+
+        # FILTER OUT white/near-white background pixels from the masked image
+        # The person is isolated on a white background, so skip pixels > 90% white
+        pixel_data = [
+            p for p in pixel_data
+            if not (p[0] > 230 and p[1] > 230 and p[2] > 230)
+        ]
+        if not pixel_data:
+            _log.warning('[PIXEL] All pixels were white background - no clothing found')
             return []
 
         # Simple color quantization using average of similar pixels
@@ -970,25 +987,10 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     style_name = result.get("style_name", "")
     if not style_name:
         style_name = "Modern Classic"
-    # Reality Filter - Kill background hallucinations by mapping items to real colors
-    _REAL_COLORS_MAP = {
-        "shirt": "White",
-        "pants": "Black",
-        "jeans": "Blue",
-        "sneakers": "White",
-        "boots": "Black",
-        "dress": "Navy",
-        "cardigan": "Beige",
-        "blazer": "Navy",
-        "jacket": "Black",
-        "skirt": "Black",
-        "shorts": "Black",
-        "top": "White",
-        "sweater": "Grey",
-        "hoodie": "Grey",
-        "coat": "Black",
-    }
-
+    # Replace 'None'/'none'/'empty' accessories with 'Non Accessory'
+    accessories_val = result.get("accessories", "")
+    if accessories_val in ("None", "none", ""):
+        result["accessories"] = "Non Accessory"
 
     return {
         "success": True,
