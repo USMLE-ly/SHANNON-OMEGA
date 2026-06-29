@@ -4,6 +4,24 @@ import { AnimatedGradient } from "@/components/ui/animated-gradient-with-svg";
 import { MarkerHighlight } from "@/components/ui/marker-highlight";
 import { ShimmerBgText } from "@/components/ui/shimmer-bg-text";
 
+/** Extract the item/accessory word from a tweak_plan string for marker highlighting */
+function extractHighlightItem(text: string): { start: string; item: string; end: string } {
+  if (!text) return { start: "Consider adding a ", item: "structured blazer", end: " for a more polished look." };
+  
+  const addMatch = text.match(/Add\s+(?:a\s+)?(?:simple\s+)?(?:delicate\s+)?(?:layered\s+)?([a-zA-Z\s]+?)\s+(?:to|for|and)/i);
+  const swapMatch = text.match(/Swap\s+(?:the\s+)?([a-zA-Z\s]+?)\s+(?:for|with)/i);
+  const match = addMatch || swapMatch;
+  
+  if (match) {
+    const item = match[1].trim();
+    const idx = text.toLowerCase().indexOf(item.toLowerCase());
+    const start = text.substring(0, idx);
+    const end = text.substring(idx + item.length);
+    return { start, item, end };
+  }
+  return { start: text, item: "", end: "" };
+}
+
 interface FashionHeroProps {
   styleName?: string;
   styleScore?: number | null;
@@ -53,6 +71,8 @@ export function FashionHero({
   accessories = "",
 }: FashionHeroProps) {
   const isNA = styleScore === null || styleScore === undefined || styleScore === 0;
+  // Convert 'None'/'none' accessories to 'Non Accessory' for display
+  const safeAccessories = (!accessories || accessories === "None" || accessories === "none") ? "Non Accessory" : accessories;
   const showMindMap = !imageUrl && vibeType;
 
   return (
@@ -220,10 +240,10 @@ export function FashionHero({
                             <ShimmerBgText><span className="capitalize tracking-wide leading-tight">{footwear}</span></ShimmerBgText>
                           </div>
                         )}
-                        {accessories && accessories !== "None" && (
+                        {true && (
                           <div className="flex items-center gap-3 text-sm md:text-base font-medium text-white bg-transparent">
                             <span className={`w-2 h-2 rounded-full ${colorSwatchMap[accessories.split(' ')[0]] || 'bg-white/80'} shadow-[0_0_8px_rgba(255,255,255,0.5)] flex-shrink-0`} />
-                            <ShimmerBgText><span className="capitalize tracking-wide leading-tight">{accessories}</span></ShimmerBgText>
+                            <ShimmerBgText><span className="capitalize tracking-wide leading-tight">{accessories === "None" ? "Non Accessory" : accessories}</span></ShimmerBgText>
                           </div>
                         )}
                       </>
@@ -261,18 +281,37 @@ export function FashionHero({
                 </div>
               </div>
 
-              {/* SECTION 4: TWEAK (Purple/Cyan Gradient + Shimmer) */}
+              {/* SECTION 4: TWEAK (Purple/Cyan Gradient + Marker Highlight) */}
               <div className="relative w-full overflow-hidden rounded-xl border border-white/10 flex-shrink-0">
                 <AnimatedGradient colors={["#8b5cf6", "#a78bfa", "#c4b5fd"]} speed={0.07} blur="medium" />
                 <div className="relative z-10 p-4 backdrop-blur-sm h-auto w-full flex flex-col justify-center">
-                  <h3 className="text-xs uppercase tracking-[0.15em] text-white/60 mb-1.5 font-semibold">
-                    <ShimmerBgText>TWEAK</ShimmerBgText>
-                  </h3>
-                  <ShimmerBgText>
-                    <p className="text-sm italic text-white/90 leading-relaxed tracking-wide">
-                      {tweakPlan || "Consider adding a structured blazer for a more polished look."}
-                    </p>
-                  </ShimmerBgText>
+                  <h3 className="text-xs uppercase tracking-[0.15em] text-white/60 mb-1.5 font-semibold">TWEAK</h3>
+                  
+                  {(() => {
+                    const text = tweakPlan || "Consider adding a structured blazer for a more polished look.";
+                    const { start, item, end } = extractHighlightItem(text);
+                    if (item) {
+                      return (
+                        <p className="text-sm italic text-white/90 leading-relaxed tracking-wide">
+                          {start}
+                          <MarkerHighlight
+                            highlight={item}
+                            markerColor="#facc15"
+                            baseColor="#ffffff"
+                            highlightedTextColor="#171717"
+                            speed={1.2}
+                            fontSize={18}
+                            fontWeight={500}
+                            className="inline-block align-middle"
+                          />
+                          {end}
+                        </p>
+                      );
+                    }
+                    return (
+                      <p className="text-sm italic text-white/90 leading-relaxed tracking-wide">{text}</p>
+                    );
+                  })()}
                 </div>
               </div>
 
