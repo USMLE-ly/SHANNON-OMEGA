@@ -812,13 +812,7 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
     # Inject color dictionary into the prompt explicitly
     color_list = ", ".join(_COLOR_NAMES) if _COLOR_NAMES else "Black, White, Blue, Red, Green"
     color_directive = f"**COLOR DICTIONARY LOCK — ABSOLUTE REQUIREMENT:** You MUST choose every color name from THIS EXACT LIST. Do NOT invent any color name. Valid colors: {color_list}. If a garment color is close to one of these, use that exact name. Never use generic descriptions like 'dark' or 'light'."
-    colored_prompt = system_prompt + "
-
-" + color_directive + "
-
-**NOTE 1:** The first photo has been processed to REMOVE THE BACKGROUND. You will see the person isolated on a WHITE background. IGNORE THE WHITE BACKGROUND and look ONLY at the clothing colors.
-
-**NOTE 2:** The second photo is a CLOSE-UP of the upper body (head, neck, upper chest). LOOK VERY CAREFULLY at this image to detect SMALL accessories like earrings, necklaces, glasses, and hair accessories. This is critical - do not miss any jewelry."
+    colored_prompt = system_prompt + "\n\n" + color_directive + "\n\n**NOTE 1:** The first photo has been processed to REMOVE THE BACKGROUND. You will see the person isolated on a WHITE background. IGNORE THE WHITE BACKGROUND and look ONLY at the clothing colors.\n\n**NOTE 2:** The second photo is a CLOSE-UP of the upper body (head, neck, upper chest). LOOK VERY CAREFULLY at this image to detect SMALL accessories like earrings, necklaces, glasses, and hair accessories. This is critical - do not miss any jewelry."
 
     compressed = compress_image_b64(masked_b64)
     face_compressed = compress_image_b64(face_b64)
@@ -927,6 +921,181 @@ def upload_image_to_blob(image_b64: str, prefix: str = "closet") -> Optional[str
         return None
 
 # ---------------------------------------------------------------------------
+# Humanizer: Generate human-sounding strengths/audit from items
+# Based on removing AI patterns: "Well-chosen X", rule-of-three, generic praise
+# ---------------------------------------------------------------------------
+_STRENGTH_TEMPLATES = {
+    "top": [
+        "The {color} {garment} sets the tone — {quality}",
+        "That {color} {garment} works because {reason}",
+        "The {color} {garment} is the right kind of {adjective}",
+    ],
+    "bottom": [
+        "The {color} {garment} keeps things grounded — {quality}",
+        "Those {color} {garment} {detail}",
+        "The {color} {garment} balance out the top nicely",
+    ],
+    "footwear": [
+        "The {color} {garment} {detail}",
+        "Smart call on the {color} {garment} — {quality}",
+        "The {color} {garment} finish the look without stealing focus",
+    ],
+    "accessory": [
+        "The {color} {garment} adds just the right amount of polish",
+        "Nice touch with the {color} {garment} — {quality}",
+        "The {color} {garment} pulls attention where it matters",
+    ],
+    "default": [
+        "The {color} {garment} works well in this context",
+        "Good choice on the {color} {garment}",
+        "The {color} {garment} fits the overall vibe",
+    ],
+}
+
+_STRENGTH_DETAILS = {
+    "top": {
+        "qualities": [
+            "doesn't need to try too hard",
+            "it's structured without being stiff",
+            "the cut flatters without being fussy",
+            "it has enough personality to carry the outfit",
+            "the fabric choice makes it work for multiple settings",
+        ],
+        "adjectives": ["effortless", "interesting", "versatile", "polished", "understated"],
+        "reasons": [
+            "it sits at that sweet spot between dressed up and relaxed",
+            "the color brings warmth to the whole look",
+            "it has enough texture to keep things from feeling flat",
+        ],
+    },
+    "bottom": {
+        "qualities": [
+            "they let the top do the talking",
+            "the wash gives them character without being loud",
+            "they're tailored well — not too tight, not too loose",
+        ],
+        "details": [
+            "have just the right amount of wear to feel lived-in",
+            "bring a subtle edge without going overboard",
+            "keep the silhouette clean and intentional",
+        ],
+    },
+    "footwear": {
+        "qualities": [
+            "they're practical without being boring",
+            "they match the energy of the outfit",
+            "they don't compete with the rest of the look",
+        ],
+        "details": [
+            "keep things casual without looking sloppy",
+            "are comfortable enough to actually wear all day",
+            "add a clean finishing touch",
+        ],
+    },
+    "accessory": {
+        "qualities": [
+            "it catches the light at the right moments",
+            "it adds detail without screaming for attention",
+            "it ties the whole look together",
+        ],
+    },
+}
+
+def _humanize_strengths(items: List[str]) -> List[str]:
+    """Generate human-sounding strength statements from detected items.
+    Avoids classic AI patterns: 'Well-chosen X', rule-of-three, generic praise."""
+    import random
+    
+    # Use a stable seed based on item content for reproducibility
+    seed = hash("|".join(items)) & 0x7FFFFFFF
+    rng = random.Random(seed)
+    
+    strengths = []
+    for item in items[:4]:  # Max 4 items
+        item_lower = item.lower()
+        words = item.split()
+        color = words[0] if len(words) > 0 else ""
+        garment = " ".join(words[1:]) if len(words) > 1 else words[0]
+        
+        # Determine category
+        if any(w in item_lower for w in ["necklace", "earring", "bracelet", "watch", "ring", "belt", "scarf", "bag", "hat", "glasses", "accessory"]):
+            cat = "accessory"
+        elif any(w in item_lower for w in ["shoe", "sneaker", "boot", "loafer", "pump", "heel", "sandal", "footwear"]):
+            cat = "footwear"
+        elif any(w in item_lower for w in ["pant", "jean", "skirt", "short", "trouser", "legging", "bottom"]):
+            cat = "bottom"
+        elif any(w in item_lower for w in ["shirt", "top", "blouse", "sweater", "jacket", "coat", "hoodie", "tee", "tank", "dress"]):
+            cat = "top"
+        else:
+            cat = "default"
+        
+        templates = _STRENGTH_TEMPLATES.get(cat, _STRENGTH_TEMPLATES["default"])
+        details = _STRENGTH_DETAILS.get(cat, {})
+        
+        # Pick a random template and fill it
+        template = rng.choice(templates)
+        quality = rng.choice(details.get("qualities", [""])) if details.get("qualities") else ""
+        adjective = rng.choice(details.get("adjectives", [""])) if details.get("adjectives") else ""
+        reason = rng.choice(details.get("reasons", [""])) if details.get("reasons") else ""
+        detail = rng.choice(details.get("details", [""])) if details.get("details") else ""
+        
+        strength = template.format(
+            color=color, garment=garment,
+            quality=quality, adjective=adjective,
+            reason=reason, detail=detail
+        )
+        # Clean up: capitalize first letter, ensure it ends with period
+        strength = strength[0].upper() + strength[1:]
+        if not strength.endswith((".", "!", "?")):
+            strength += "."
+        strengths.append(strength)
+    
+    return strengths
+
+
+def _humanize_audit(items: List[str], style_name: str) -> str:
+    """Generate a natural-sounding outfit summary. Avoids 'A well-coordinated outfit...'"""
+    if not items:
+        return "Simple outfit that gets the job done."
+    
+    item_count = len(items)
+    top = items[0] if item_count > 0 else ""
+    bottom = items[1] if item_count > 1 else ""
+    extra = items[2] if item_count > 2 else ""
+    
+    if item_count == 1:
+        return f"A {top.lower()} doing the heavy lifting — sometimes that's all you need."
+    elif item_count == 2:
+        return f"{top} and {bottom.lower()}. Clean, intentional, nothing wasted."
+    elif item_count >= 3:
+        return f"{top}, {bottom.lower()}, and {extra.lower()} — each piece earns its place."
+    return f"A {style_name.lower()} look built from {item_count} intentional pieces."
+
+
+def _humanize_tweak(tweak: str, items: List[str]) -> str:
+    """Humanize the tweak_plan — remove 'Consider adding...' boilerplate."""
+    if not tweak or tweak.startswith("Consider"):
+        # Generate a specific suggestion based on what's missing
+        has_accessory = any(a in " ".join(items).lower() for a in ["necklace", "earring", "bracelet", "watch", "ring", "belt", "scarf"])
+        has_layers = any(l in " ".join(items).lower() for l in ["jacket", "blazer", "cardigan", "coat"])
+        
+        if not has_accessory and not has_layers:
+            return "A simple necklace or a structured jacket would take this up a notch without overcomplicating it."
+        elif not has_accessory:
+            return "Throwing on a watch or a subtle necklace would add some polish."
+        elif not has_layers:
+            return "A lightweight jacket or blazer would give this more structure."
+        else:
+            return "Honestly, this works as-is. Maybe swap the bag if you want to change the vibe."
+    
+    # Clean up common AI phrases in the AI-generated tweak
+    tweak = tweak.replace("Consider adding ", "Try adding ")
+    tweak = tweak.replace("Consider swapping ", "Swap ")
+    tweak = tweak.replace("for a more polished look", "for a sharper feel")
+    tweak = tweak.replace("for a more put-together appearance", "for a cleaner look")
+    return tweak
+
+
 # Global cache for pixel analysis
 _image_b64_cache = ""
 
@@ -1018,32 +1187,14 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
                 seen_s.add(s)
                 unique_s.append(s)
         strengths = unique_s
-    # ALWAYS generate strengths from REAL items detected (not AI hallucinated ones)
+    # Humanize strengths — replace AI-isms with natural-sounding observations
     detected = [s for s in [result.get(k, "") for k in ["top_type", "bottom_type", "footwear", "accessories"]] if s and s != "None"]
-    if detected and len(detected) >= 2:
-        new_strengths = []
-        for i, d in enumerate(detected[:3]):
-            new_strengths.append(f"Well-chosen {d}")
-        # Deduplicate
-        seen = set()
-        strengths = []
-        for s in new_strengths:
-            if s not in seen:
-                seen.add(s)
-                strengths.append(s)
-    elif not strengths or not isinstance(strengths, list) or len(strengths) < 3:
-        if items_detected:
-            new_strengths = []
-            seen = set()
-            for item in items_detected[:3]:
-                s = f"Chosen {item.lower()}"
-                if s not in seen:
-                    seen.add(s)
-                    new_strengths.append(s)
-            strengths = new_strengths
-        while len(strengths) < 3:
-            fallback = ["Well-balanced proportions", "Cohesive color story", "Comfortable and stylish"]
-            strengths.append(fallback[len(strengths)])
+    if detected:
+        strengths = _humanize_strengths(detected)
+    elif items_detected:
+        strengths = _humanize_strengths(items_detected)
+    if not strengths:
+        strengths = ["The proportions work well together.", "The color palette makes sense for the context.", "It reads as intentional without being overdone."]
     style_score = result.get("style_score")
     if style_score is None or not isinstance(style_score, (int, float)) or style_score < 60:
         style_score = 78
@@ -1125,8 +1276,8 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
         "actual_colors": actual_colors,
         "items_detected": items_detected,
         "strengths": strengths,
-        "audit": result.get("audit", "A well-coordinated outfit with balanced styling."),
-        "tweak_plan": result.get("tweak_plan", "Consider adding a structured blazer for a more polished look."),
+        "audit": _humanize_audit(items_detected if items_detected else detected, style_name),
+        "tweak_plan": _humanize_tweak(result.get("tweak_plan", ""), items_detected if items_detected else detected),
         "generation_prompt": result.get("generation_prompt", "A fashion-forward person wearing a stylish outfit in an editorial setting."),
     }
 
