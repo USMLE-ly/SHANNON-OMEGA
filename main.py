@@ -615,17 +615,9 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
         pixel_array = np.array(img)
         pixel_data = pixel_array.reshape(-1, 3).tolist()
 
-        # ONLY filter perfectly white background (255,255,255) — keeps white/light clothing
-        # Use a tight threshold to preserve white sneakers, cream tops, etc.
-        pixel_data = [p for p in pixel_data if not (p[0] > 252 and p[1] > 252 and p[2] > 252)]
-        # ONLY filter perfectly black edges (0,0,0) — keeps dark/black clothing
-        pixel_data = [p for p in pixel_data if not (p[0] < 3 and p[1] < 3 and p[2] < 3)]
-        # Do NOT filter grey pixels — they may be actual garment colors
-        if not pixel_data:
-            return []
-
         # FILTER OUT white/near-white background pixels from the masked image
         # The person is isolated on a white background, so skip pixels > 90% white
+        # Also skip pure-black edges from mask boundaries
         pixel_data = [
             p for p in pixel_data
             if not (p[0] > 230 and p[1] > 230 and p[2] > 230)
@@ -638,6 +630,14 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
         quantized = [(r // 32 * 32, g // 32 * 32, b // 32 * 32) for r, g, b in pixel_data]
         color_counts = Counter(quantized)
         top_pixels = [item[0] for item in color_counts.most_common(num_colors + 3)]
+
+        # Re-rank by color saturation to prefer garment colors over skin tones
+        # More saturated pixels are more likely to be clothing, less likely to be skin
+        def _sat(rgb):
+            r, g, b = [x/255.0 for x in rgb]
+            mx, mn = max(r, g, b), min(r, g, b)
+            return mx - mn
+        top_pixels.sort(key=lambda x: _sat(x), reverse=True)
 
         # Match each dominant pixel to closest color name in dictionary
         matched_colors = []
@@ -654,6 +654,12 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
                     best_name = name
             if best_name and best_dist < 120:  # Only accept if reasonably close
                 matched_colors.append(best_name)
+
+        # Filter out skin-tone colors that aren't actual garment colors
+        SKIN_TONES = {"Beige", "Tan", "Nude", "Nude Blush", "Camel", "Taupe", 
+                       "Caramel", "Mocha", "Bronze", "Copper", "Peach", "Apricot",
+                       "Blush", "Dusty Rose", "Rose Gold", "Nude Glow"}
+        matched_colors = [c for c in matched_colors if c not in SKIN_TONES]
 
         # Deduplicate and return
         seen = set()
