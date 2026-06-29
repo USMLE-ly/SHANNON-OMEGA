@@ -497,12 +497,52 @@ def _extract_person_center_crop(image_b64: str) -> str:
         bottom = min(h, cy + crop_size)
         cropped = img.crop((left, top, right, bottom))
         buf = io.BytesIO()
-        cropped.save(buf, format="JPEG", quality=90)
+        cropped.save(buf, format="JPEG", quality=95)
         _log.info("[MASK] Center crop fallback: %dx%d -> %dx%d", w, h, cropped.size[0], cropped.size[1])
         return base64.b64encode(buf.getvalue()).decode()
 
     except Exception as exc:
         _log.warning("[MASK] Critical error: %s", exc)
+        return image_b64
+
+
+def _extract_face_upper_crop(image_b64: str) -> str:
+    """Extract the upper body/face region for better accessory detection.
+    Crops to top 40% of the image, which includes head, neck, and upper chest."""
+    try:
+        raw = base64.b64decode(image_b64)
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        w, h = img.size
+        
+        # If MediaPipe is available, first mask the background then crop upper
+        if _HAS_MEDIAPIPE and SelfieSegmentation is not None and cv2 is not None:
+            try:
+                cv_img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+                with SelfieSegmentation(model_selection=1) as seg:
+                    results = seg.process(cv_img)
+                    if results is not None and results.segmentation_mask is not None:
+                        mask = results.segmentation_mask
+                        person_mask = mask > 0.4
+                        isolated = np.full_like(np.array(img), 255)
+                        isolated[person_mask] = np.array(img)[person_mask]
+                        isolated_pil = Image.fromarray(isolated)
+                        # Crop upper 40% for face/neck area
+                        upper = isolated_pil.crop((0, 0, w, int(h * 0.40)))
+                        buf = io.BytesIO()
+                        upper.save(buf, format="JPEG", quality=95)
+                        _log.info("[FACE] Upper body crop: %dx%d", upper.size[0], upper.size[1])
+                        return base64.b64encode(buf.getvalue()).decode()
+            except Exception as mp_err:
+                _log.warning("[FACE] MediaPipe failed: %s", mp_err)
+        
+        # Fallback: just crop upper 40%
+        upper = img.crop((0, 0, w, int(h * 0.40)))
+        buf = io.BytesIO()
+        upper.save(buf, format="JPEG", quality=95)
+        _log.info("[FACE] Fallback upper crop: %dx%d", upper.size[0], upper.size[1])
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception as exc:
+        _log.warning("[FACE] Error: %s", exc)
         return image_b64
 
 def compress_image_b64(image_b64: str) -> str:
@@ -518,11 +558,11 @@ def compress_image_b64(image_b64: str) -> str:
         raw = base64.b64decode(image_b64)
         img = Image.open(io.BytesIO(raw))
         w, h = img.size
-        if max(w, h) > 800:
-            ratio = 800.0 / max(w, h)
+        if max(w, h) > 1200:
+            ratio = 1200.0 / max(w, h)
             img = img.resize((int(w * ratio), int(h * ratio)), _RESAMPLE_LANCZOS)
         buf = io.BytesIO()
-        img.convert("RGB").save(buf, format="JPEG", quality=80, optimize=True)
+        img.convert("RGB").save(buf, format="JPEG", quality=95, optimize=True)
         return base64.b64encode(buf.getvalue()).decode()
     except Exception as exc:
         _log.warning("[COMPRESS] %s — returning original", exc)
@@ -740,41 +780,38 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
 
     # Mask out background using person segmentation FIRST
     masked_b64 = _extract_person_center_crop(image_b64)
+    
+    # Also extract face/upper-body close-up for better accessory detection
+    face_b64 = _extract_face_upper_crop(image_b64)
 
     # Inject color dictionary into the prompt explicitly
     color_list = ", ".join(_COLOR_NAMES) if _COLOR_NAMES else "Black, White, Blue, Red, Green"
     color_directive = f"**COLOR DICTIONARY LOCK — ABSOLUTE REQUIREMENT:** You MUST choose every color name from THIS EXACT LIST. Do NOT invent any color name. Valid colors: {color_list}. If a garment color is close to one of these, use that exact name. Never use generic descriptions like 'dark' or 'light'."
-    colored_prompt = system_prompt + "\n\n" + color_directive + "\n\n**NOTE:** The photo has been processed to REMOVE THE BACKGROUND. You will see the person isolated on a WHITE background. IGNORE THE WHITE BACKGROUND and look ONLY at the clothing colors."
+    colored_prompt = system_prompt + "
+
+" + color_directive + "
+
+**NOTE 1:** The first photo has been processed to REMOVE THE BACKGROUND. You will see the person isolated on a WHITE background. IGNORE THE WHITE BACKGROUND and look ONLY at the clothing colors.
+
+**NOTE 2:** The second photo is a CLOSE-UP of the upper body (head, neck, upper chest). LOOK VERY CAREFULLY at this image to detect SMALL accessories like earrings, necklaces, glasses, and hair accessories. This is critical - do not miss any jewelry."
 
     compressed = compress_image_b64(masked_b64)
+    face_compressed = compress_image_b64(face_b64)
     headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
 
-    # Try vision model with masked image data
+    # Try vision model with BOTH images: full-body masked + face close-up
     vision_payload = {
         "model": MIMO_VISION_MODEL,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": colored_prompt},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}"}},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{face_compressed}"}},
         ]}],
         "max_tokens": CIPHER_MAX_TOKENS,
         "temperature": temperature,
         "response_format": {"type": "json_object"},
     }
-    try:
-        _log.info("[MIMO-VISION] Trying vision model=%s", MIMO_VISION_MODEL)
-        resp = requests.post(MIMO_API_URL, json=vision_payload, headers=headers, timeout=60)
-        _log.info("[MIMO-VISION] HTTP %s: %s", resp.status_code, resp.text[:200])
-        if resp.status_code == 200:
-            raw = resp.json()["choices"][0]["message"]["content"]
-            match = re.search(r"\{[\s\S]*\}", raw)
-            if match:
-                result = json.loads(match.group(0))
-                result["source"] = "cipher_vision"
-                return result
-    except Exception as exc:
-        _log.error("[MIMO-VISION] %s", exc)
-
-    # === FALLBACK: Try OpenRouter as backup provider ===
+        # === FALLBACK: Try OpenRouter as backup provider ===
     if OPENROUTER_API_KEY:
         try:
             _log.info("[OPENROUTER] Trying fallback vision model=%s", OPENROUTER_VISION_MODEL)
@@ -784,6 +821,7 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
                 "messages": [{"role": "user", "content": [
                     {"type": "text", "text": colored_prompt},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{compressed}"}},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{face_compressed}"}},
                 ]}],
                 "max_tokens": CIPHER_MAX_TOKENS,
                 "temperature": temperature,
@@ -1002,9 +1040,51 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     if acc_val and acc_val != "Non Accessory" and "," in acc_val:
         parts = [p.strip() for p in acc_val.split(",") if p.strip()]
         if len(parts) >= 2:
-            # Format as "Item1 + Item2" for display
             display = " + ".join(parts[:3])
             result["accessories"] = display
+
+    # ---- COLOR CORRECTION: Force item color names to match pixel-truth colors ----
+    # The AI often hallucinates colors (e.g. says 'Black' when the top is actually Navy).
+    # Pixel colors are the ABSOLUTE TRUTH. We correct the first word (color) of each item.
+    if pixel_colors and len(pixel_colors) >= 1:
+        pixel_set = set(c.lower() for c in pixel_colors)
+        color_words = set()
+        for c in pixel_colors:
+            for word in c.lower().split():
+                color_words.add(word)
+        
+        for item_key in ["top_type", "bottom_type", "footwear"]:
+            item_val = result.get(item_key, "")
+            if not item_val or item_val in ("None", "none"):
+                continue
+            words = item_val.split()
+            if len(words) < 2:
+                continue  # Need at least 'Color + Garment'
+            
+            first_word = words[0].strip(',.!?;:')
+            # Check if first word is a hallucinated color (not in pixel set)
+            # Also check common hallucinated colors to correct
+            HALLUCINATED = {"charcoal", "acid", "slate", "silver", "concrete", "khaki", "coffee", "burgundy", "camo"}
+            is_hallucinated = first_word.lower() in HALLUCINATED
+            
+            if is_hallucinated or (pixel_colors and first_word.lower() not in color_words and first_word.lower() not in [c.lower() for c in pixel_colors]):
+                # Replace the first word with the most specific pixel color
+                best_color = pixel_colors[0]  # Default to most dominant
+                # If bottom/jeans, prefer blue/denim shades; if top, use dominant
+                if item_key == "bottom_type" and any(bc in ['blue', 'denim', 'black', 'navy'] for bc in pixel_colors):
+                    for bc in pixel_colors:
+                        if bc.lower() in ('blue', 'black', 'navy', 'denim'):
+                            best_color = bc
+                            break
+                elif item_key == "footwear" and any(fc in ['white', 'black', 'brown', 'beige'] for fc in pixel_colors):
+                    for fc in pixel_colors:
+                        if fc.lower() in ('white', 'black', 'brown', 'beige'):
+                            best_color = fc
+                            break
+                words[0] = best_color
+                corrected = ' '.join(words)
+                result[item_key] = corrected
+                _log.info("[COLOR-CORRECT] %s: '%s' -> '%s' (pixels: %s)", item_key, item_val, corrected, pixel_colors)
 
     return {
         "success": True,
