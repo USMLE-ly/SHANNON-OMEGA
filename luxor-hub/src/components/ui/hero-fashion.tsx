@@ -183,7 +183,7 @@ export function FashionHero({
                     after=""
                     markerColor="#facc15"
                     baseColor="#ffffff"
-                    highlightedTextColor="#171717"
+                    highlightedTextColor="#ffffff"
                     fontSize={48}
                     fontWeight={700}
                     speed={1.2}
@@ -193,13 +193,13 @@ export function FashionHero({
               </div>
 
               {/* SECTION 2: ITEMS (Sky Blue Gradient + Shimmer) */}
-              <div className="relative flex-1 min-h-[100px] overflow-hidden rounded-xl border border-white/10">
+              <div className="relative w-full overflow-hidden rounded-xl border border-white/10">
                 <AnimatedGradient colors={["#0ea5e9", "#38bdf8", "#bae6fd"]} speed={0.05} blur="medium" />
-                <div className="relative z-10 p-4 backdrop-blur-sm h-full w-full">
+                <div className="relative z-10 p-4 backdrop-blur-sm h-auto w-full">
                   <h3 className="text-xs uppercase tracking-[0.15em] text-white/60 mb-3 font-semibold">
                     <ShimmerBgText>ITEMS</ShimmerBgText>
                   </h3>
-                  <div className="space-y-2.5">
+                  <div className="space-y-2.5 pb-2">
                     {(topType || bottomType || footwear) ? (
                       <>
                         {topType && (
@@ -242,13 +242,13 @@ export function FashionHero({
               </div>
 
               {/* SECTION 3: STRENGTHS (Pink/Orange Gradient + Shimmer) */}
-              <div className="relative flex-1 min-h-[100px] overflow-hidden rounded-xl border border-white/10">
+              <div className="relative w-full overflow-hidden rounded-xl border border-white/10">
                 <AnimatedGradient colors={["#ec4899", "#f472b6", "#fbcfe8"]} speed={0.06} blur="medium" />
-                <div className="relative z-10 p-4 backdrop-blur-sm h-full w-full">
+                <div className="relative z-10 p-4 backdrop-blur-sm h-auto w-full">
                   <h3 className="text-xs uppercase tracking-[0.15em] text-white/60 mb-3 font-semibold">
                     <ShimmerBgText>STRENGTHS</ShimmerBgText>
                   </h3>
-                  <div className="space-y-2">
+                  <div className="space-y-2 pb-2">
                     {strengths.length > 0 ? strengths.map((s, idx) => (
                       <div key={idx} className="flex items-start gap-2.5 text-sm text-white/90 leading-relaxed">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] mt-1.5 flex-shrink-0" />
@@ -261,14 +261,18 @@ export function FashionHero({
                 </div>
               </div>
 
-              {/* SECTION 4: TWEAK (Purple/Cyan Gradient) */}
-              <div className="relative min-h-[70px] overflow-hidden rounded-xl border border-white/10 flex-shrink-0">
+              {/* SECTION 4: TWEAK (Purple/Cyan Gradient + Shimmer) */}
+              <div className="relative w-full overflow-hidden rounded-xl border border-white/10 flex-shrink-0">
                 <AnimatedGradient colors={["#8b5cf6", "#a78bfa", "#c4b5fd"]} speed={0.07} blur="medium" />
-                <div className="relative z-10 p-4 backdrop-blur-sm h-full w-full flex flex-col justify-center">
-                  <h3 className="text-xs uppercase tracking-[0.15em] text-white/60 mb-1.5 font-semibold">Tweak</h3>
-                  <p className="text-sm italic text-white/90 leading-relaxed tracking-wide">
-                    {tweakPlan || "Consider adding a structured blazer for a more polished look."}
-                  </p>
+                <div className="relative z-10 p-4 backdrop-blur-sm h-auto w-full flex flex-col justify-center">
+                  <h3 className="text-xs uppercase tracking-[0.15em] text-white/60 mb-1.5 font-semibold">
+                    <ShimmerBgText>TWEAK</ShimmerBgText>
+                  </h3>
+                  <ShimmerBgText>
+                    <p className="text-sm italic text-white/90 leading-relaxed tracking-wide">
+                      {tweakPlan || "Consider adding a structured blazer for a more polished look."}
+                    </p>
+                  </ShimmerBgText>
                 </div>
               </div>
 
