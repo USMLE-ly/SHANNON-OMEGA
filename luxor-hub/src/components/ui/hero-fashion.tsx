@@ -248,7 +248,7 @@ export function FashionHero({
                         )}
                       </>
                     ) : itemsDetected.length > 0 ? (
-                      itemsDetected.map((item, i) => (
+                      itemsDetected.filter(item => item && item !== "None").map((item, i) => (
                         <div key={i} className="flex items-center gap-3 text-sm md:text-base font-medium text-white bg-transparent">
                           <span className="w-2 h-2 rounded-full bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.5)] flex-shrink-0" />
                           <ShimmerBgText><span className="capitalize tracking-wide leading-tight">{item}</span></ShimmerBgText>

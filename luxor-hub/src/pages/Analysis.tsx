@@ -10,9 +10,9 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlowingEffect } from "@/components/ui/glowing-effect";
 import {
-  Upload, Camera, Star, Palette, Shirt, ShieldCheck, Sparkles,
-  Loader2, Instagram, Twitter, ExternalLink, Eye, RefreshCw, AlertTriangle,
-  TrendingUp, Layers, ArrowLeftRight, X
+  Upload, Camera,
+  Loader2, Instagram, Twitter, ExternalLink, RefreshCw, AlertTriangle,
+  Layers
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ImageSwiper } from "@/components/ui/image-swiper";
@@ -99,212 +99,6 @@ const itemAnim = {
 /* ------------------------------------------------------------------ */
 
 
-/* ------------------------------------------------------------------ */
-/*  Interactive Stylist Quiz — replaces Pro Tweak                      */
-/* ------------------------------------------------------------------ */
-function InteractiveStylistQuiz({ imagePreview, styleName, actualColors }: { imagePreview: string | null; styleName?: string; actualColors?: string[]; }) {
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<string[]>([]);
-  const [chatHistory, setChatHistory] = useState<{role: string; text: string}[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{image_url?: string; generated_prompt?: string; outfit_name?: string} | null>(null);
-  const [nextQuestion, setNextQuestion] = useState("Tell me what kind of vibe you are going for today? (Casual, Business, Party, Date Night, or Sport)");
-  const [quizComplete, setQuizComplete] = useState(false);
-
-  const options = [
-    ["Casual", "Business", "Party", "Date Night", "Sport"],
-    ["Hot", "Mild", "Cold"],
-    ["Neutrals", "Brights", "Pastels", "Dark"],
-  ];
-
-  const handleAnswer = async (answer: string) => {
-    if (!imagePreview) { toast.error("Upload an image first"); return; }
-    
-    const newAnswers = [...answers, answer];
-    setAnswers(newAnswers);
-    setStep(step + 1);
-    setLoading(true);
-
-    try {
-      let b64 = imagePreview;
-      if (b64.startsWith("data:")) b64 = b64.split(",")[1];
-      else if (b64.startsWith("http")) {
-        const r = await fetch(b64);
-        const blob = await r.blob();
-        b64 = await new Promise((res) => {
-          const fr = new FileReader();
-          fr.onloadend = () => res((fr.result as string).split(",")[1]);
-          fr.readAsDataURL(blob);
-        });
-      }
-
-      const newHistory = [...chatHistory, { role: "user", text: answer }];
-      setChatHistory(newHistory);
-
-      const api = 'https://nice-useful-plot--al-bosify.replit.app';
-      const resp = await fetch(api + '/api/v1/stylist-explore', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_b64: b64,
-          chat_history: newHistory,
-          answer: answer,
-          _t: Date.now(),
-        }),
-      });
-
-      if (!resp.ok) throw new Error('Server error: ' + resp.status);
-      const data = await resp.json();
-
-      if (data.generated_prompt && data.image_url) {
-        // Quiz complete!
-        setResult({
-          image_url: data.image_url,
-          generated_prompt: data.generated_prompt,
-          outfit_name: data.outfit_name || "New Style",
-        });
-        setQuizComplete(true);
-        setNextQuestion("");
-        toast.success('New outfit created! ✨');
-      } else if (data.next_question) {
-        setNextQuestion(data.next_question);
-        setChatHistory([...newHistory, { role: "assistant", text: data.next_question }]);
-      }
-    } catch (e: any) {
-      toast.error(e.message);
-      setStep(step); // Revert step
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetQuiz = () => {
-    setStep(0);
-    setAnswers([]);
-    setChatHistory([]);
-    setResult(null);
-    setNextQuestion("Tell me what kind of vibe you are going for today? (Casual, Business, Party, Date Night, or Sport)");
-    setQuizComplete(false);
-  };
-
-  const currentOptions = step < options.length ? options[step] : ["Yes", "No", "Try something different"];
-
-  return (
-    <motion.div variants={itemAnim}>
-      <div className="relative rounded-[1.5rem] border-[0.75px] border-border p-3">
-        <GlowingEffect spread={50} glow proximity={64} inactiveZone={0.01} borderWidth={3} />
-        <Card className="glass-card border-0 shadow-none">
-          <CardHeader className="pb-3">
-            <CardTitle className="font-display flex items-center gap-2 text-lg">
-              <div className="w-0.5 h-5 gold-gradient rounded-full mr-1" />
-              <Sparkles className="w-5 h-5 text-primary" /> ✨ What other fashion would you like to explore?
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">Answer a few questions and discover a completely new outfit.</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!quizComplete && !loading && step === 0 && !result && (
-              <div className="text-center py-6">
-                {imagePreview ? (
-                  <div className="space-y-4">
-                    <p className="text-sm text-foreground/80">{nextQuestion}</p>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {currentOptions.map((opt) => (
-                        <Button key={opt} variant="outline" onClick={() => handleAnswer(opt)}
-                          className="bg-white/10 backdrop-blur-md border-primary/30 hover:bg-primary/20 hover:border-primary/50 transition-all text-sm px-5 py-2.5">
-                          {opt}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                    <Camera className="w-12 h-12" />
-                    <p className="text-sm">Upload an outfit photo above</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!quizComplete && loading && (
-              <div className="text-center py-10 space-y-4">
-                <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-                <p className="font-display text-base">FASHION-OMEGA is crafting your look...</p>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {answers.map((a, i) => (
-                    <Badge key={i} variant="secondary" className="text-xs">{a}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {!quizComplete && !loading && step > 0 && (
-              <div className="text-center py-4 space-y-4">
-                <div className="flex flex-wrap justify-center gap-2 mb-4">
-                  {answers.map((a, i) => (
-                    <Badge key={i} variant="secondary" className="text-xs">{a}</Badge>
-                  ))}
-                </div>
-                <p className="text-sm text-foreground/80">{nextQuestion}</p>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {currentOptions.map((opt) => (
-                    <Button key={opt} variant="outline" onClick={() => handleAnswer(opt)}
-                      className="bg-white/10 backdrop-blur-md border-primary/30 hover:bg-primary/20 hover:border-primary/50 transition-all text-sm px-5 py-2.5">
-                      {opt}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {quizComplete && result && (
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
-                  <Sparkles className="w-5 h-5 text-primary flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{result.outfit_name || "New Style"}</p>
-                    <p className="text-sm text-muted-foreground mt-1">{result.generated_prompt}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                      <Eye className="w-3.5 h-3.5" /> Your Current Style
-                    </p>
-                    <div className="rounded-2xl overflow-hidden border border-border shadow-lg bg-muted/20 aspect-[3/4]">
-                      <img src={imagePreview!} alt="Current" className="w-full h-full object-cover" />
-                    </div>
-                    {styleName && (
-                      <p className="text-xs text-muted-foreground text-center">{styleName}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-primary" /> ✨ New Style Inspiration
-                    </p>
-                    <div className="rounded-2xl overflow-hidden border border-border shadow-lg bg-muted/20 aspect-[3/4]">
-                      <img src={result.image_url} alt="New style" className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    Based on your vibe: {answers.join(" → ")}
-                  </Badge>
-                  <Button size="sm" variant="outline" onClick={resetQuiz} className="border-primary/30 hover:bg-primary/10">
-                    <RefreshCw className="w-3 h-3 mr-1" /> Try Another Vibe
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </motion.div>
-  );
-}
 
 export default function Analysis() {
   const { user } = useAuth();
@@ -708,7 +502,7 @@ export default function Analysis() {
                 </motion.div>
 
                 {/* ---- Interactive Stylist Quiz ---- */}
-                <InteractiveStylistQuiz imagePreview={imagePreview} styleName={data?.style_name} actualColors={data?.actual_colors} />
+
 
                 {/* ---- Outfit Versatility Section ---- */}
                 <motion.div variants={childVariants}>
