@@ -220,7 +220,7 @@ export function FashionHero({
                     <ShimmerBgText>ITEMS</ShimmerBgText>
                   </h3>
                   <div className="space-y-2.5 pb-2">
-                    {(topType || bottomType || footwear) ? (
+                    {(topType && topType !== 'None' || bottomType && bottomType !== 'None' || footwear && footwear !== 'None') ? (
                       <>
                         {topType && (
                           <div className="flex items-center gap-3 text-sm md:text-base font-medium text-white bg-transparent">
@@ -234,13 +234,13 @@ export function FashionHero({
                             <ShimmerBgText><span className="capitalize tracking-wide leading-tight">{bottomType}</span></ShimmerBgText>
                           </div>
                         )}
-                        {footwear && (
+                        {footwear && footwear !== "None" && (
                           <div className="flex items-center gap-3 text-sm md:text-base font-medium text-white bg-transparent">
                             <span className={`w-2 h-2 rounded-full ${colorSwatchMap[footwear.split(' ')[0]] || 'bg-white/80'} shadow-[0_0_8px_rgba(255,255,255,0.5)] flex-shrink-0`} />
                             <ShimmerBgText><span className="capitalize tracking-wide leading-tight">{footwear}</span></ShimmerBgText>
                           </div>
                         )}
-                        {true && (
+                        {(accessories && accessories !== "None") && (
                           <div className="flex items-center gap-3 text-sm md:text-base font-medium text-white bg-transparent">
                             <span className={`w-2 h-2 rounded-full ${colorSwatchMap[accessories.split(' ')[0]] || 'bg-white/80'} shadow-[0_0_8px_rgba(255,255,255,0.5)] flex-shrink-0`} />
                             <ShimmerBgText><span className="capitalize tracking-wide leading-tight">{accessories === "None" ? "Non Accessory" : accessories}</span></ShimmerBgText>

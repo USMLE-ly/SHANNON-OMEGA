@@ -987,10 +987,14 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     style_name = result.get("style_name", "")
     if not style_name:
         style_name = "Modern Classic"
-    # Replace 'None'/'none'/'empty' accessories with 'Non Accessory'
-    accessories_val = result.get("accessories", "")
-    if accessories_val in ("None", "none", ""):
-        result["accessories"] = "Non Accessory"
+    # Replace 'None'/'none'/'empty' values for all item fields
+    for item_key in ["top_type", "bottom_type", "footwear", "accessories"]:
+        val = result.get(item_key, "")
+        if val in ("None", "none", ""):
+            if item_key == "accessories":
+                result[item_key] = "Non Accessory"
+            else:
+                result[item_key] = ""
 
     return {
         "success": True,
