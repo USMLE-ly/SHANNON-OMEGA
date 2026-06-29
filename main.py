@@ -831,7 +831,21 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
         "temperature": temperature,
         "response_format": {"type": "json_object"},
     }
-        # === FALLBACK: Try OpenRouter as backup provider ===
+    try:
+        _log.info("[MIMO-VISION] Trying vision model=%s", MIMO_VISION_MODEL)
+        resp = requests.post(MIMO_API_URL, json=vision_payload, headers=headers, timeout=60)
+        _log.info("[MIMO-VISION] HTTP %s: %s", resp.status_code, resp.text[:200])
+        if resp.status_code == 200:
+            raw = resp.json()["choices"][0]["message"]["content"]
+            match = re.search(r"\{[\s\S]*\}", raw)
+            if match:
+                result = json.loads(match.group(0))
+                result["source"] = "cipher_vision"
+                return result
+    except Exception as exc:
+        _log.error("[MIMO-VISION] %s", exc)
+
+    # === FALLBACK: Try OpenRouter as backup provider ===
     if OPENROUTER_API_KEY:
         try:
             _log.info("[OPENROUTER] Trying fallback vision model=%s", OPENROUTER_VISION_MODEL)
