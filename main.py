@@ -2,6 +2,7 @@
 # Luxor Pro Stylist — Fashion Analysis & Interactive Ecosystem
 # Groq Vision · Stylist Quiz · Closet Management · Outfit Generator
 # Vercel Blob · Qdrant Storage · Serverless Ready
+from __future__ import annotations
 import base64
 import io
 import json
@@ -13,7 +14,7 @@ import urllib.parse
 import uuid
 from concurrent.futures import TimeoutError
 from datetime import datetime, timezone
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, cast
 
 import requests
 from flask import Flask, request, jsonify
@@ -255,7 +256,7 @@ _load_color_dictionary()
 _qdrant_closet = None
 _CLOSET_COLLECTION = "luxor_closet"
 
-def _get_qdrant_closet() -> Optional[QdrantClient]:
+def _get_qdrant_closet() -> Any:
     global _qdrant_closet
     if _qdrant_closet is None and QDRANT_URL and QDRANT_API_KEY:
         try:
@@ -268,7 +269,7 @@ def _get_qdrant_closet() -> Optional[QdrantClient]:
             _qdrant_closet = None
     return _qdrant_closet
 
-def _ensure_closet_collection(client: QdrantClient):
+def _ensure_closet_collection(client: Any):
     if qdrant_models is None:
         _log.warning("[QDRANT] qdrant_models not available, skipping collection creation")
         return
@@ -783,7 +784,7 @@ def _extract_image_features(image_b64: str) -> str:
         # Simple brightness analysis
         gray = img.convert('L')
         raw_pixels = [p for p in gray.getdata()]
-        avg_brightness = sum(raw_pixels) / len(raw_pixels)
+        avg_brightness = sum(int(p) if isinstance(p, (int, float)) else 0 for p in raw_pixels) / len(raw_pixels)
         features.append(f"Average brightness: {avg_brightness:.0f}/255")
 
         if avg_brightness < 80:
@@ -1465,13 +1466,19 @@ def dressing_generate():
         return jsonify({"success": False, "error": "Could not generate outfit"})
 
     # result should be a list of 2 outfits
-    outfit_options_raw = result if isinstance(result, list) else result.get("outfits", [])
-    if not outfit_options_raw or len(outfit_options_raw) == 0:
+    # result should be a list of 2 outfits (or a dict with 'outfits' key)
+    outfit_list = result if isinstance(result, list) else (result.get("outfits") if isinstance(result, dict) else None)
+    if not isinstance(outfit_list, list) or not outfit_list:
         return jsonify({"success": False, "error": "Could not compose outfits"})
+
+    # Use cast to help pyright narrow the type correctly
+    outfit_list = cast("list[dict[str, Any]]", outfit_list)
 
     # Look up items by ID for each outfit
     outfit_options = []
-    for opt in outfit_options_raw[:2]:
+    for opt_count, opt in enumerate(outfit_list):
+        if opt_count >= 2:
+            break
         item_ids = opt.get("item_ids", [])
         items = []
         for iid in item_ids:
