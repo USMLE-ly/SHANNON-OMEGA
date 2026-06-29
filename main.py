@@ -370,7 +370,8 @@ SACRED_PROMPT = """ABSOLUTE REALITY RULES — CLASSIFY, DO NOT GENERATE:
 3. PER ITEM: For each garment, state its EXACT Color + Type + Material/Pattern if visible.
 4. BACKGROUND: The background has been REMOVED and replaced with WHITE. IGNORE the white. Look ONLY at the clothing on the person.
 5. COLOR LOCK: Only use precise color names from the official dictionary provided. Do NOT invent color names.
-6. NEVER hallucinate garments or colors. If something is not visible, set it to "None".
+6. ACCESSORIES: Look VERY carefully for ALL small accessories. Check for earrings, necklaces, bracelets, rings, watches, belts, scarves, hats, glasses, bags, and hair accessories. List EVERY visible accessory separately. Do NOT miss earrings or necklaces even if small.
+7. NEVER hallucinate garments or colors. If something is not visible, set it to "None".
 7. REALITY CHECK: If you cannot clearly identify an item, state exactly what is partially visible. Do NOT guess.
 
 Return ONLY this valid JSON with NO extra text:
@@ -380,7 +381,7 @@ Return ONLY this valid JSON with NO extra text:
   "top_type": "Exact Color + Garment (e.g. 'Blue T-Shirt') or 'None'",
   "bottom_type": "Exact Color + Garment (e.g. 'Black Jeans') or 'None'",
   "footwear": "Exact Color + Footwear (e.g. 'White Sneakers') or 'None'",
-  "accessories": "Exact Accessory or 'None'",
+  "accessories": "Comma-separated list of ALL accessories visible (e.g. 'Gold Hoop Earrings, Layered Necklace') or 'None'",
   "style_score": int(70-95),
   "style_name": "2-word vibe (e.g. 'Casual Chic')",
   "strengths": ["3 real, specific strengths based ONLY on actual garments in the photo"],
@@ -458,8 +459,8 @@ def _extract_person_center_crop(image_b64: str) -> str:
                                     y_max, x_max = non_zero.max(axis=0)
                                     person_h = y_max - y_min
                                     person_w = x_max - x_min
-                                    pad_y = max(int(person_h * 0.05), 10)
-                                    pad_x = max(int(person_w * 0.05), 10)
+                                    pad_y = max(int(person_h * 0.12), 20)
+                                    pad_x = max(int(person_w * 0.12), 20)
                                     y_min = max(0, y_min - pad_y)
                                     y_max = min(isolated.shape[0], y_max + pad_y)
                                     x_min = max(0, x_min - pad_x)
@@ -995,6 +996,15 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
                 result[item_key] = "Non Accessory"
             else:
                 result[item_key] = ""
+
+    # If accessories contains multiple items (comma-separated), merge them
+    acc_val = result.get("accessories", "")
+    if acc_val and acc_val != "Non Accessory" and "," in acc_val:
+        parts = [p.strip() for p in acc_val.split(",") if p.strip()]
+        if len(parts) >= 2:
+            # Format as "Item1 + Item2" for display
+            display = " + ".join(parts[:3])
+            result["accessories"] = display
 
     return {
         "success": True,

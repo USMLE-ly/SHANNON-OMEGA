@@ -71,8 +71,6 @@ export function FashionHero({
   accessories = "",
 }: FashionHeroProps) {
   const isNA = styleScore === null || styleScore === undefined || styleScore === 0;
-  // Convert 'None'/'none' accessories to 'Non Accessory' for display
-  const safeAccessories = (!accessories || accessories === "None" || accessories === "none") ? "Non Accessory" : accessories;
   const showMindMap = !imageUrl && vibeType;
 
   return (
@@ -243,7 +241,7 @@ export function FashionHero({
                         {(accessories && accessories !== "None") && (
                           <div className="flex items-center gap-3 text-sm md:text-base font-medium text-white bg-transparent">
                             <span className={`w-2 h-2 rounded-full ${colorSwatchMap[accessories.split(' ')[0]] || 'bg-white/80'} shadow-[0_0_8px_rgba(255,255,255,0.5)] flex-shrink-0`} />
-                            <ShimmerBgText><span className="capitalize tracking-wide leading-tight">{accessories === "None" ? "Non Accessory" : accessories}</span></ShimmerBgText>
+                            <ShimmerBgText><span className="capitalize tracking-wide leading-tight">{accessories}</span></ShimmerBgText>
                           </div>
                         )}
                       </>
