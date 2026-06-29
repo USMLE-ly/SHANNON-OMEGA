@@ -1,5 +1,5 @@
 import React from "react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { AppLayout } from "@/components/app/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -483,6 +483,28 @@ export default function Analysis() {
     }
   };
 
+  /** Compute outfit versatility scores based on detected items and vibe */
+  const computeOccasionScores = useCallback((items: string[], vibe: string) => {
+    let casual = 50, business = 50, relaxed = 50;
+
+    items.forEach(item => {
+      const lower = item.toLowerCase();
+      if (lower.includes('t-shirt') || lower.includes('jeans') || lower.includes('sneakers') || lower.includes('shorts') || lower.includes('joggers')) casual += 15;
+      if (lower.includes('blazer') || lower.includes('trousers') || lower.includes('pumps') || lower.includes('tie') || lower.includes('button-up') || lower.includes('oxfords')) business += 15;
+      if (lower.includes('sweater') || lower.includes('cardigan') || lower.includes('loungewear') || lower.includes('hoodie') || lower.includes('sweatpants')) relaxed += 15;
+    });
+
+    if (vibe?.toLowerCase().includes('casual')) casual += 10;
+    if (vibe?.toLowerCase().includes('formal') || vibe?.toLowerCase().includes('business')) business += 10;
+    if (vibe?.toLowerCase().includes('relaxed') || vibe?.toLowerCase().includes('streetwear') || vibe?.toLowerCase().includes('sporty')) relaxed += 10;
+
+    return {
+      casual: Math.min(100, Math.max(0, casual)),
+      business: Math.min(100, Math.max(0, business)),
+      relaxed: Math.min(100, Math.max(0, relaxed)),
+    };
+  }, []);
+
   const handleSave = async () => {
     if (!data || !user || !imagePreview) return;
     setSaving(true);
@@ -655,6 +677,68 @@ export default function Analysis() {
 
                 {/* ---- Interactive Stylist Quiz ---- */}
                 <InteractiveStylistQuiz imagePreview={imagePreview} styleName={data?.style_name} actualColors={data?.actual_colors} />
+
+                {/* ---- Outfit Versatility Section ---- */}
+                <motion.div variants={childVariants}>
+                  {(() => {
+                    const { casual, business, relaxed } = computeOccasionScores(data?.items_detected || [], data?.vibe_type || '');
+                    return (
+                      <div className="w-full p-5 rounded-xl border border-white/10 bg-black/40 backdrop-blur-sm">
+                        <h3 className="text-xs uppercase tracking-[0.15em] text-white/60 mb-1 font-semibold">Outfit Versatility</h3>
+                        <p className="text-[11px] text-white/40 mb-4">How well this outfit adapts to different occasions.</p>
+                        <div className="space-y-4">
+                          {/* Casual */}
+                          <div>
+                            <div className="flex justify-between mb-1.5">
+                              <span className="text-xs font-medium text-white/80">Casual</span>
+                              <span className="text-xs font-medium text-white/60">{casual}%</span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                              <motion.div
+                                className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${casual}%` }}
+                                transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Business */}
+                          <div>
+                            <div className="flex justify-between mb-1.5">
+                              <span className="text-xs font-medium text-white/80">Business</span>
+                              <span className="text-xs font-medium text-white/60">{business}%</span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                              <motion.div
+                                className="h-full rounded-full bg-gradient-to-r from-purple-400 to-purple-600"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${business}%` }}
+                                transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Relaxed */}
+                          <div>
+                            <div className="flex justify-between mb-1.5">
+                              <span className="text-xs font-medium text-white/80">Relaxed</span>
+                              <span className="text-xs font-medium text-white/60">{relaxed}%</span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                              <motion.div
+                                className="h-full rounded-full bg-gradient-to-r from-green-400 to-green-600"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${relaxed}%` }}
+                                transition={{ duration: 0.8, ease: "easeOut", delay: 0.3 }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </motion.div>
 
                 {/* ---- Save Button ---- */}
                 <motion.div variants={childVariants} className="flex items-center gap-3 justify-end">
