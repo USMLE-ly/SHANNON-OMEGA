@@ -507,14 +507,14 @@ def _extract_person_center_crop(image_b64: str) -> str:
 
 
 def _extract_face_upper_crop(image_b64: str) -> str:
-    """Extract the upper body/face region for better accessory detection.
-    Crops to top 40% of the image, which includes head, neck, and upper chest."""
+    """Extract a tight face/ear crop for detecting small accessories like earrings and necklaces.
+    Uses person segmentation to find the head region, crops tightly with extra resolution."""
     try:
         raw = base64.b64decode(image_b64)
         img = Image.open(io.BytesIO(raw)).convert("RGB")
         w, h = img.size
         
-        # If MediaPipe is available, first mask the background then crop upper
+        # If MediaPipe is available, use mask to find person + tight head crop
         if _HAS_MEDIAPIPE and SelfieSegmentation is not None and cv2 is not None:
             try:
                 cv_img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
@@ -526,20 +526,45 @@ def _extract_face_upper_crop(image_b64: str) -> str:
                         isolated = np.full_like(np.array(img), 255)
                         isolated[person_mask] = np.array(img)[person_mask]
                         isolated_pil = Image.fromarray(isolated)
-                        # Crop upper 40% for face/neck area
-                        upper = isolated_pil.crop((0, 0, w, int(h * 0.40)))
-                        buf = io.BytesIO()
-                        upper.save(buf, format="JPEG", quality=95)
-                        _log.info("[FACE] Upper body crop: %dx%d", upper.size[0], upper.size[1])
-                        return base64.b64encode(buf.getvalue()).decode()
+                        
+                        # Find person bounding box to locate head region
+                        non_zero = np.argwhere(person_mask)
+                        if len(non_zero) > 100:
+                            y_min, _ = non_zero.min(axis=0)
+                            y_max, _ = non_zero.max(axis=0)
+                            person_height = y_max - y_min
+                            # Head is typically top 18% of person bounding box
+                            head_top = max(0, y_min - int(person_height * 0.03))
+                            head_bottom = min(h, y_min + int(person_height * 0.18))
+                            # Width: use 60% of image width centered
+                            crop_w = int(w * 0.60)
+                            crop_left = max(0, (w - crop_w) // 2)
+                            crop_right = min(w, crop_left + crop_w)
+                            
+                            head_crop = isolated_pil.crop((crop_left, head_top, crop_right, head_bottom))
+                            # Upsize for detail if small
+                            if min(head_crop.size) < 400:
+                                scale = 400.0 / min(head_crop.size)
+                                head_crop = head_crop.resize((int(head_crop.size[0] * scale), int(head_crop.size[1] * scale)), _RESAMPLE_LANCZOS)
+                            buf = io.BytesIO()
+                            head_crop.save(buf, format="JPEG", quality=95)
+                            _log.info("[FACE] Head crop: %dx%d (person: %dpx tall)", head_crop.size[0], head_crop.size[1], person_height)
+                            return base64.b64encode(buf.getvalue()).decode()
             except Exception as mp_err:
                 _log.warning("[FACE] MediaPipe failed: %s", mp_err)
         
-        # Fallback: just crop upper 40%
-        upper = img.crop((0, 0, w, int(h * 0.40)))
+        # Fallback: tight top-center crop (top 22% of image)
+        crop_h = int(h * 0.22)
+        crop_w = int(w * 0.65)
+        left = max(0, (w - crop_w) // 2)
+        upper = img.crop((left, 0, left + crop_w, crop_h))
+        # Upsize for detail
+        if min(upper.size) < 400:
+            scale = 400.0 / min(upper.size)
+            upper = upper.resize((int(upper.size[0] * scale), int(upper.size[1] * scale)), _RESAMPLE_LANCZOS)
         buf = io.BytesIO()
         upper.save(buf, format="JPEG", quality=95)
-        _log.info("[FACE] Fallback upper crop: %dx%d", upper.size[0], upper.size[1])
+        _log.info("[FACE] Fallback head crop: %dx%d", upper.size[0], upper.size[1])
         return base64.b64encode(buf.getvalue()).decode()
     except Exception as exc:
         _log.warning("[FACE] Error: %s", exc)
