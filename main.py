@@ -1232,10 +1232,25 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
             
             first_word = words[0].strip(',.!?;:')
             HALLUCINATED = {"charcoal", "acid", "slate", "silver", "concrete", "khaki", "coffee", "burgundy", "camo"}
-            is_hallucinated = first_word.lower() in HALLUCINATED
             
-            if is_hallucinated or (pixel_colors and first_word.lower() not in color_words and first_word.lower() not in [c.lower() for c in pixel_colors]):
-                best_color = pixel_colors[0]
+            # Fix strategy: correct hallucinated background colors, and fix grey→blue/navy when pixel colors confirm
+            needs_correction = first_word.lower() in HALLUCINATED
+            smart_override = False
+            
+            # Smart "grey" fix: if AI says grey but pixel colors contain blue/navy, correct to blue
+            if not needs_correction and first_word.lower() in ("grey", "gray") and pixel_colors:
+                blue_shades = {"blue", "navy", "denim", "steel blue", "sky blue", "royal blue", "cobalt", "ocean", "sapphire"}
+                for pc in pixel_colors:
+                    if pc.lower() in blue_shades:
+                        needs_correction = True
+                        smart_override = True
+                        best_color = pc
+                        break
+            
+            if needs_correction:
+                best_color = ""
+                if not smart_override:
+                    best_color = pixel_colors[0]
                 if item_key == "bottom_type" and any(bc in ['blue', 'denim', 'black', 'navy'] for bc in pixel_colors):
                     for bc in pixel_colors:
                         if bc.lower() in ('blue', 'black', 'navy', 'denim'):
