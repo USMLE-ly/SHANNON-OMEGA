@@ -243,6 +243,7 @@ _load_color_dictionary()
 # ---------------------------------------------------------------------------
 _qdrant_closet = None
 _CLOSET_COLLECTION = "luxor_closet"
+_LOCAL_CLOSET_FILE = os.path.join(BASE_DIR, "closet_items.json")
 
 def _get_qdrant_closet() -> Any:
     global _qdrant_closet
@@ -278,78 +279,123 @@ def _ensure_closet_collection(client: Any):
 
 def qdrant_get_all_items() -> List[Dict[str, Any]]:
     client = _get_qdrant_closet()
-    if not client:
-        return []
+    if client:
+        try:
+            result = client.scroll(
+                collection_name=_CLOSET_COLLECTION,
+                limit=1000,
+                with_payload=True,
+            )
+            points = result[0] if isinstance(result, tuple) else result
+            qdrant_items = [dict(p.payload) for p in points if p.payload]
+            if qdrant_items:
+                return qdrant_items
+        except Exception as exc:
+            _log.warning("[QDRANT] Scroll error: %s", exc)
+    # Fallback: load from local JSON file
     try:
-        result = client.scroll(
-            collection_name=_CLOSET_COLLECTION,
-            limit=1000,
-            with_payload=True,
-        )
-        points = result[0] if isinstance(result, tuple) else result
-        return [dict(p.payload) for p in points if p.payload]
-    except Exception as exc:
-        _log.warning("[QDRANT] Scroll error: %s", exc)
+        with open(_LOCAL_CLOSET_FILE, 'r') as f:
+            local_items = json.load(f)
+        _log.info("[CLOSET] Loaded %d items from local file", len(local_items))
+        return local_items
+    except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 def qdrant_upsert_item(item: Dict[str, Any]) -> bool:
     client = _get_qdrant_closet()
-    if not client or qdrant_models is None:
-        return False
+    if client and qdrant_models is not None:
+        try:
+            point_id = item.get("id", str(uuid.uuid4())[:8])
+            client.upsert(
+                collection_name=_CLOSET_COLLECTION,
+                points=[qdrant_models.PointStruct(
+                    id=point_id,
+                    vector=[0.0, 0.0, 0.0, 0.0],
+                    payload=item,
+                )]
+            )
+            return True
+        except Exception as exc:
+            _log.warning("[QDRANT] Upsert error: %s", exc)
+    # Fallback: store in local JSON file
     try:
-        point_id = item.get("id", str(uuid.uuid4())[:8])
-        client.upsert(
-            collection_name=_CLOSET_COLLECTION,
-            points=[qdrant_models.PointStruct(
-                id=point_id,
-                vector=[0.0, 0.0, 0.0, 0.0],
-                payload=item,
-            )]
-        )
+        items = []
+        try:
+            with open(_LOCAL_CLOSET_FILE, 'r') as f:
+                items = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        # Remove existing item with same id if present
+        item_id = item.get("id", str(uuid.uuid4())[:8])
+        item["id"] = item_id
+        items = [i for i in items if i.get("id") != item_id]
+        items.append(item)
+        with open(_LOCAL_CLOSET_FILE, 'w') as f:
+            json.dump(items, f, indent=2)
+        _log.info("[CLOSET] Saved item to local file: %s (%s)", item.get("label", "unknown"), item_id)
         return True
     except Exception as exc:
-        _log.warning("[QDRANT] Upsert error: %s", exc)
+        _log.warning("[CLOSET] Local save error: %s", exc)
         return False
 
 def qdrant_delete_item(item_id: str) -> bool:
     client = _get_qdrant_closet()
-    if not client or qdrant_models is None:
-        return False
+    if client and qdrant_models is not None:
+        try:
+            client.delete(
+                collection_name=_CLOSET_COLLECTION,
+                points_selector=qdrant_models.Filter(
+                    must=[qdrant_models.FieldCondition(
+                        key="id", match=qdrant_models.MatchValue(value=item_id)
+                    )]
+                ),
+            )
+            return True
+        except Exception as exc:
+            _log.warning("[QDRANT] Delete error: %s", exc)
+    # Fallback: delete from local file
     try:
-        client.delete(
-            collection_name=_CLOSET_COLLECTION,
-            points_selector=qdrant_models.Filter(
-                must=[qdrant_models.FieldCondition(
-                    key="id", match=qdrant_models.MatchValue(value=item_id)
-                )]
-            ),
-        )
+        with open(_LOCAL_CLOSET_FILE, 'r') as f:
+            items = json.load(f)
+        items = [i for i in items if i.get("id") != item_id]
+        with open(_LOCAL_CLOSET_FILE, 'w') as f:
+            json.dump(items, f, indent=2)
+        _log.info("[CLOSET] Deleted item %s from local file", item_id)
         return True
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
     except Exception as exc:
-        _log.warning("[QDRANT] Delete error: %s", exc)
+        _log.warning("[CLOSET] Local delete error: %s", exc)
         return False
 
 def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
     client = _get_qdrant_closet()
-    if not client or qdrant_models is None:
-        return None
+    if client and qdrant_models is not None:
+        try:
+            result = client.scroll(
+                collection_name=_CLOSET_COLLECTION,
+                limit=1,
+                with_payload=True,
+                scroll_filter=qdrant_models.Filter(
+                    must=[qdrant_models.FieldCondition(
+                        key="id", match=qdrant_models.MatchValue(value=item_id)
+                    )]
+                ),
+            )
+            points = result[0] if isinstance(result, tuple) else result
+            if points and points[0].payload:
+                return dict(points[0].payload)
+        except Exception as exc:
+            _log.warning("[QDRANT] Get error: %s", exc)
+    # Fallback: look up in local file
     try:
-        result = client.scroll(
-            collection_name=_CLOSET_COLLECTION,
-            limit=1,
-            with_payload=True,
-            scroll_filter=qdrant_models.Filter(
-                must=[qdrant_models.FieldCondition(
-                    key="id", match=qdrant_models.MatchValue(value=item_id)
-                )]
-            ),
-        )
-        points = result[0] if isinstance(result, tuple) else result
-        if points and points[0].payload:
-            return dict(points[0].payload)
+        with open(_LOCAL_CLOSET_FILE, 'r') as f:
+            items = json.load(f)
+        for item in items:
+            if item.get("id") == item_id:
+                return item
         return None
-    except Exception as exc:
-        _log.warning("[QDRANT] Get error: %s", exc)
+    except (FileNotFoundError, json.JSONDecodeError):
         return None
 
 # ---------------------------------------------------------------------------
@@ -404,8 +450,8 @@ Use the user's previous answers and style context for uniqueness."""
 CLOSET_PROMPT = """You are a personal stylist. Analyze the user's closet provided below. Pick 2 distinct, complete outfits that perfectly match the user's request: {occasion} occasion, {weather} weather, and {color_palette} color palette. Each outfit must include 1 Top, 1 Bottom, 1 Pair of Shoes, and optionally 1 Accessory or Dress.
 Return ONLY a JSON array of 2 objects in this exact format:
 [
-  { "outfit_name": "Sporty Street Look", "item_ids": ["id1", "id2", "id3"], "reason": "why this works" },
-  { "outfit_name": "Summer Lounge Vibe", "item_ids": ["id4", "id5", "id6"], "reason": "why this works" }
+  {{ "outfit_name": "Sporty Street Look", "item_ids": ["id1", "id2", "id3"], "reason": "why this works" }},
+  {{ "outfit_name": "Summer Lounge Vibe", "item_ids": ["id4", "id5", "id6"], "reason": "why this works" }}
 ]"""
 
 REQUIRED_KEYS = [
@@ -1303,7 +1349,7 @@ NO markdown. NO explanations. Valid JSON only."""
     _log.warning("[MIMO-VISION] All models failed - returning None")
     return None
 
-def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Optional[Dict[str, Any]]:
+def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Any:
     if not MIMO_API_KEY:
         return None
     headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
@@ -1323,13 +1369,32 @@ def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temp
         }
         try:
             _log.info("[MIMO-TEXT] Trying model=%s", model)
-            resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=15)
+            resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=30)
             _log.info("[MIMO-TEXT] HTTP %s for %s (key=%s...)", resp.status_code, model, MIMO_API_KEY[:8] if MIMO_API_KEY else "NONE")
             if resp.status_code == 200:
                 raw = resp.json()["choices"][0]["message"]["content"]
-                match = re.search(r"\{[\s\S]*\}", raw)
-                if match:
-                    return json.loads(match.group(0))
+                raw = raw.strip()
+                # Strip markdown code block wrappers if present
+                if raw.startswith("```"):
+                    raw = raw.split("\n", 1)[-1] if "\n" in raw else raw
+                    raw = raw.rsplit("```", 1)[0] if "```" in raw else raw
+                    raw = raw.strip()
+                # Handle JSON array responses (dressing room generates lists)
+                arr_match = re.search(r"\[([\s\S]*)\]", raw)
+                if arr_match:
+                    try:
+                        parsed = json.loads(arr_match.group(0))
+                        if isinstance(parsed, list):
+                            return parsed
+                    except json.JSONDecodeError:
+                        pass
+                # Handle JSON object responses (standard analysis)
+                obj_match = re.search(r"\{([\s\S]*)\}", raw)
+                if obj_match:
+                    try:
+                        return json.loads(obj_match.group(0))
+                    except json.JSONDecodeError:
+                        pass
             elif resp.status_code == 429:
                 _log.warning("[MIMO-TEXT] Rate limited on %s, trying next", model)
                 continue
