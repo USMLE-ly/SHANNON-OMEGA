@@ -1360,6 +1360,7 @@ NO markdown. NO explanations. Valid JSON only."""
     return None
 
 def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7, timeout: int = 30) -> Any:
+    """Call MiMo text model with retry on empty responses."""
     if not MIMO_API_KEY:
         return None
     headers = {"Content-Type": "application/json", "api-key": MIMO_API_KEY, "HTTP-Referer": "https://luxor.ly", "X-Title": "LuxorHub"}
@@ -1377,78 +1378,93 @@ def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temp
             "max_tokens": CIPHER_MAX_TOKENS,
             "temperature": temperature,
         }
-        try:
-            _log.info("[MIMO-TEXT] Trying model=%s", model)
-            resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=timeout)
-            _log.info("[MIMO-TEXT] HTTP %s for %s (key=%s...)", resp.status_code, model, MIMO_API_KEY[:8] if MIMO_API_KEY else "NONE")
-            if resp.status_code == 200:
+        for attempt in range(3):
+            try:
+                _log.info("[MIMO-TEXT] Trying model=%s (attempt %d/3)", model, attempt + 1)
+                resp = requests.post(MIMO_API_URL, json=payload, headers=headers, timeout=timeout)
+                _log.info("[MIMO-TEXT] HTTP %s for %s (key=%s...)", resp.status_code, model, MIMO_API_KEY[:8] if MIMO_API_KEY else "NONE")
+
+                if resp.status_code == 429:
+                    _log.warning("[MIMO-TEXT] Rate limited, trying next model")
+                    break
+
+                if resp.status_code != 200:
+                    _log.error("[MIMO-TEXT] HTTP %s: %s", resp.status_code, resp.text[:200])
+                    continue
+
                 raw = resp.json()["choices"][0]["message"]["content"]
-                raw = raw.strip()
-                _log.info("[MIMO-TEXT] Raw response (first 100): %s", raw[:100])
-                # Strip markdown code block wrappers if present
+                raw = raw.strip() if raw else ""
+
+                if not raw:
+                    _log.warning("[MIMO-TEXT] Empty response, retry %d/3", attempt + 1)
+                    continue
+
+                _log.info("[MIMO-TEXT] Raw (first 100): %s", raw[:100])
+
+                # Strip markdown code blocks
                 while raw.startswith("```"):
-                    first_nl = raw.find("\n")
-                    if first_nl >= 0:
-                        raw = raw[first_nl+1:]
+                    idx_nl = raw.find("\n")
+                    if idx_nl >= 0:
+                        raw = raw[idx_nl + 1:]
                     else:
                         raw = ""
                         break
                     raw = raw.strip()
                 while "```" in raw:
-                    last_bt = raw.rfind("```")
-                    if last_bt >= 0:
-                        raw = raw[:last_bt]
+                    last = raw.rfind("```")
+                    if last >= 0:
+                        raw = raw[:last]
                     raw = raw.strip()
-                # Try parsing as JSON array first (dressing room generates lists)
+
+                if not raw:
+                    continue
+
+                # Try JSON array
                 if raw.startswith("["):
                     try:
                         parsed = json.loads(raw)
                         if isinstance(parsed, list):
-                            _log.info("[MIMO-TEXT] Parsed as array: %d items", len(parsed))
+                            _log.info("[MIMO-TEXT] Array: %d items", len(parsed))
                             return parsed
                     except json.JSONDecodeError:
                         pass
-                # Try parsing as JSON object (standard analysis)
+
+                # Try JSON object
                 if raw.startswith("{"):
                     try:
                         parsed = json.loads(raw)
-                        _log.info("[MIMO-TEXT] Parsed as object")
+                        _log.info("[MIMO-TEXT] Object parsed")
                         return parsed
                     except json.JSONDecodeError:
                         pass
-                # Fallback: try to find any JSON array or object in the text
-                arr_match = re.search(r"\[([\s\S]*?)\]", raw)
-                if arr_match:
-                    try:
-                        parsed = json.loads(arr_match.group(0))
-                        if isinstance(parsed, list):
-                            _log.info("[MIMO-TEXT] Found array via regex: %d items", len(parsed))
-                            return parsed
-                    except json.JSONDecodeError:
-                        pass
-                obj_match = re.search(r"\{([\s\S]*?)\}", raw)
-                if obj_match:
-                    try:
-                        parsed = json.loads(obj_match.group(0))
-                        _log.info("[MIMO-TEXT] Found object via regex")
-                        return parsed
-                    except json.JSONDecodeError:
-                        pass
-                _log.warning("[MIMO-TEXT] Could not parse response: %s", raw[:200])
-            elif resp.status_code == 429:
-                _log.warning("[MIMO-TEXT] Rate limited on %s, trying next", model)
-                continue
-            else:
-                _log.error("[MIMO-TEXT] HTTP %s from %s: %s", resp.status_code, model, resp.text[:200])
-                continue
-        except Exception as exc:
-            _log.error("[MIMO-TEXT] %s on %s", exc, model)
-            continue
-    return None
 
-# ---------------------------------------------------------------------------
-# Vercel Blob helper
-# ---------------------------------------------------------------------------
+                # Regex fallback
+                m = re.search(r"\[([\s\S]*?)\]", raw)
+                if m:
+                    try:
+                        p = json.loads(m.group(0))
+                        if isinstance(p, list):
+                            _log.info("[MIMO-TEXT] Array via regex: %d items", len(p))
+                            return p
+                    except json.JSONDecodeError:
+                        pass
+                m = re.search(r"\{([\s\S]*?)\}", raw)
+                if m:
+                    try:
+                        p = json.loads(m.group(0))
+                        _log.info("[MIMO-TEXT] Object via regex")
+                        return p
+                    except json.JSONDecodeError:
+                        pass
+
+                _log.warning("[MIMO-TEXT] Parse failed (attempt %d/3): %s", attempt + 1, raw[:200])
+
+            except Exception as exc:
+                _log.error("[MIMO-TEXT] %s (attempt %d/3)", exc, attempt + 1)
+                continue
+
+    _log.warning("[MIMO-TEXT] All attempts exhausted")
+    return None
 def upload_image_to_blob(image_b64: str, prefix: str = "closet") -> Optional[str]:
     if not BLOB_READ_WRITE_TOKEN:
         _log.warning("[BLOB] No token configured")
