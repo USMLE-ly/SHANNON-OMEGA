@@ -101,15 +101,10 @@ _BUILTIN_COLORS = {
   "Ivory": "#FFFFF0",
   "Beige": "#F5F5DC",
   "Tan": "#D2B48C",
-  "Khaki": "#C3B091",
   "Camel": "#C19A6B",
   "Grey": "#808080",
-  "Charcoal": "#36454F",
-  "Silver": "#C0C0C0",
-  "Steel": "#71797E",
   "Navy": "#000080",
   "Midnight Blue": "#191970",
-  "Slate": "#708090",
   "Blue": "#0000FF",
   "Royal Blue": "#4169E1",
   "Sky Blue": "#87CEEB",
@@ -193,12 +188,10 @@ _BUILTIN_COLORS = {
   "Pumpkin": "#FF7518",
   "Brown": "#A52A2A",
   "Chocolate": "#7B3F00",
-  "Coffee": "#6F4E37",
   "Chestnut": "#954535",
   "Taupe": "#483C32",
   "Mocha": "#967969",
   "Caramel": "#AF6F4C",
-  "Espresso": "#4E2A26",
   "Mahogany": "#C04000",
   "Bronze": "#CD7F32",
   "Copper": "#B87333",
@@ -214,13 +207,10 @@ _BUILTIN_COLORS = {
   "Holographic": "#E8E4F0",
   "Leopard": "#D4A373",
   "Zebra": "#E8E8E8",
-  "Camo Green": "#4A5D23",
-  "Camo Brown": "#5C4033",
   "Blue Denim": "#1560BD",
   "Light Denim": "#5D8AA8",
   "Dark Denim": "#1C3F60",
   "Raw Denim": "#4A6E8A",
-  "Acid Wash": "#9FB6D4",
   "Black Denim": "#1A1A1A",
   "White Cotton": "#F5F5F0",
   "Natural Linen": "#FAF0E6",
@@ -366,7 +356,7 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 SACRED_PROMPT = """ABSOLUTE REALITY RULES — CLASSIFY, DO NOT GENERATE:
 
-1. COLORS: Use EXACTLY the color of the garment. If the shirt is BLUE, write "Blue T-Shirt", NOT "Navy" or "Steel".
+1. COLORS: Use EXACTLY the color of the garment. If the shirt is BLUE, write "Blue T-Shirt", NOT "Navy" or "Charcoal".
 2. GARMENTS: Identify the EXACT garment type. A T-Shirt is "T-Shirt", NOT "Sweater" or "Top".
 3. PER ITEM: For each garment, state its EXACT Color + Type + Material/Pattern if visible.
 4. BACKGROUND: The background has been REMOVED and replaced with WHITE. IGNORE the white. Look ONLY at the clothing on the person.
@@ -659,7 +649,13 @@ def _get_dominant_colors_from_pixels(image_b64: str, num_colors: int = 3) -> Lis
         SKIN_TONES = {"Beige", "Tan", "Nude", "Nude Blush", "Camel", "Taupe", 
                        "Caramel", "Mocha", "Bronze", "Copper", "Peach", "Apricot",
                        "Blush", "Dusty Rose", "Rose Gold", "Nude Glow"}
-        matched_colors = [c for c in matched_colors if c not in SKIN_TONES]
+        # Also filter out background/nature colors that are never clothing
+        BACKGROUND_COLORS = {"Moss", "Sage", "Olive", "Forest Green", "Hunter Green", 
+                               "Army Green", "Brown", "Chocolate", "Chestnut", "Ochre",
+                               "Rust", "Terra Cotta", "Leopard", "Zebra", "Metallic Silver",
+                               "Metallic Gold", "Holographic", "Sequin", "Lace", "Patent Leather",
+                               "Canary", "Honey", "Pumpkin"}
+        matched_colors = [c for c in matched_colors if c not in SKIN_TONES and c not in BACKGROUND_COLORS]
 
         # Deduplicate and return
         seen = set()
@@ -740,43 +736,20 @@ def _extract_image_features(image_b64: str) -> str:
         color_counts = Counter(quantized)
         top_colors = color_counts.most_common(5)
 
-        # Convert RGB to color names
+        # Convert RGB to color names using the color dictionary
         color_names = []
         for (r, g, b), count in top_colors:
-            if r > 200 and g > 200 and b > 200:
-                name = "White"
-            elif r < 50 and g < 50 and b < 50:
-                name = "Black"
-            elif r > 200 and g < 100 and b < 100:
-                name = "Red"
-            elif r > 200 and g > 150 and b < 100:
-                name = "Orange"
-            elif r > 200 and g > 200 and b < 100:
-                name = "Yellow"
-            elif r < 100 and g > 150 and b < 100:
-                name = "Green"
-            elif r < 100 and g < 150 and b > 200:
-                name = "Blue"
-            elif r > 150 and g < 100 and b > 150:
-                name = "Purple"
-            elif r > 150 and g > 100 and b < 100:
-                name = "Brown"
-            elif r > 200 and g > 180 and b > 150:
-                name = "Beige"
-            elif r > 150 and g > 150 and b > 150:
-                name = "Grey"
-            elif r < 50 and g < 50 and b > 150:
-                name = "Navy"
-            elif r > 200 and g < 200 and b < 100:
-                name = "Khaki"
-            elif r > 150 and g < 100 and b < 100:
-                name = "Maroon"
-            elif r > 150 and g > 150 and b < 50:
-                name = "Olive"
-            else:
-                name = f"rgb({r},{g},{b})"
-            if name not in color_names:
-                color_names.append(name)
+            best_name = "unknown"
+            best_dist = float('inf')
+            for name, hex_code in _COLOR_MAPPINGS.items():
+                hex_code = hex_code.lstrip('#')
+                cr, cg, cb = int(hex_code[0:2], 16), int(hex_code[2:4], 16), int(hex_code[4:6], 16)
+                dist = ((r - cr) ** 2 * 0.3 + (g - cg) ** 2 * 0.59 + (b - cb) ** 2 * 0.11) ** 0.5
+                if dist < best_dist:
+                    best_dist = dist
+                    best_name = name
+            if best_name and best_dist < 100 and best_name not in color_names:
+                color_names.append(best_name)
 
         # Determine if image has a person-like shape (simple heuristic)
         w, h = img.size
@@ -848,6 +821,11 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
                 result = json.loads(match.group(0))
                 result["source"] = "cipher_vision"
                 return result
+        # If model not supported (400 with "Not supported model"), don't retry
+        if resp.status_code == 400 and "Not supported model" in resp.text:
+            _log.warning("[MIMO-VISION] Model %s not supported by this API key", MIMO_VISION_MODEL)
+        else:
+            _log.warning("[MIMO-VISION] Vision API returned %s, trying fallback", resp.status_code)
     except Exception as exc:
         _log.error("[MIMO-VISION] %s", exc)
 
@@ -878,7 +856,52 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
         except Exception as or_exc:
             _log.error("[OPENROUTER] %s", or_exc)
 
-    _log.warning("[MIMO-VISION] All vision models failed - returning None")
+    _log.warning("[MIMO-VISION] All vision models failed - trying text-only fallback")
+    
+    # === FALLBACK: Use text model with locally extracted image features ===
+    try:
+        _log.info("[MIMO-TEXT-FALLBACK] Using text model with extracted image features")
+        features = _extract_image_features(compressed)
+        # Extract pixel colors for accurate color information
+        pixel_colors = _get_dominant_colors_from_pixels(image_b64, num_colors=5)
+        pixel_color_str = ", ".join(pixel_colors) if pixel_colors else "unknown"
+        
+        text_prompt = colored_prompt + f"""
+        
+IMPORTANT: The vision API is unavailable. You must use these EXTRACTED IMAGE FEATURES to analyze the outfit:
+
+EXTRACTED COLORS FROM PIXEL ANALYSIS: {pixel_color_str}
+IMAGE FEATURES:
+{features}
+
+Based on the pixel color analysis and image features above, generate the complete fashion analysis JSON.
+- Use ONLY the colors from the pixel analysis (above) as garment colors
+- If pixel colors show dark/black tones, the person is wearing dark clothing
+- Infer garment types from the overall image features
+- Generate realistic strengths, audit, and tweak based on the detected colors"""
+        
+        text_payload = {
+            "model": MIMO_TEXT_MODEL,
+            "messages": [{"role": "user", "content": text_prompt}],
+            "max_tokens": CIPHER_MAX_TOKENS,
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+        }
+        resp = requests.post(MIMO_API_URL, json=text_payload, headers=headers, timeout=30)
+        _log.info("[MIMO-TEXT-FALLBACK] HTTP %s", resp.status_code)
+        if resp.status_code == 200:
+            raw = resp.json()["choices"][0]["message"]["content"]
+            match = re.search(r"\{[\s\S]*\}", raw)
+            if match:
+                result = json.loads(match.group(0))
+                result["source"] = "text_fallback"
+                _log.info("[MIMO-TEXT-FALLBACK] Success! Style=%s Score=%s", 
+                          result.get("style_name"), result.get("style_score"))
+                return result
+    except Exception as exc:
+        _log.error("[MIMO-TEXT-FALLBACK] %s", exc)
+    
+    _log.warning("[MIMO-VISION] All models failed - returning None")
     return None
 
 def call_groq_text(messages: List[Dict[str, str]], system_prompt: str = "", temperature: float = 0.7) -> Optional[Dict[str, Any]]:
@@ -1164,7 +1187,7 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
             actual_colors = _validate_colors_with_pixels(actual_colors, pixel_colors)
 
         # === STEP 4: Reality filter — ONLY for AI hallucinated colors, NOT pixel colors ===
-        background_indicators = {"Concrete", "Camo Green", "Camo Brown"}
+        background_indicators = {"Concrete", "Camo Green", "Camo Brown", "Acid Wash", "Slate", "Silver", "Khaki", "Coffee", "Charcoal", "Steel", "Espresso"}
         if actual_colors and any(c in background_indicators for c in actual_colors):
             _REAL_COLORS_MAP = {
                 "shirt": "White", "pants": "Black", "jeans": "Blue", "sneakers": "White",
