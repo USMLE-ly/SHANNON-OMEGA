@@ -74,6 +74,8 @@ MIMO_VISION_MODEL = os.getenv("MIMO_VISION_MODEL", "mimo-v2-omni")
 MIMO_TEXT_MODEL = os.getenv("MIMO_TEXT_MODEL", "mimo-v2.5-pro")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_VISION_MODEL = "qwen/qwen-2.5-vl-72b-instruct:free"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.0-flash")
 CIPHER_MAX_TOKENS = int(os.getenv("CIPHER_MAX_TOKENS", "1500"))
 PORT = int(os.getenv("PORT", "5000"))
 
@@ -85,8 +87,9 @@ QDRANT_URL = os.getenv("QDRANT_URL", "")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
 _log.info("MiMo API key loaded: %s (masked: %s)", bool(MIMO_API_KEY), MIMO_API_KEY[:8] + "..." + MIMO_API_KEY[-4:] if MIMO_API_KEY else "NONE")
-_log.info("MiMo vision model: %s", MIMO_VISION_MODEL)
-_log.info("MiMo text model: %s", MIMO_TEXT_MODEL)
+_log.info("MiMo vision model: %s (text model: %s)", MIMO_VISION_MODEL, MIMO_TEXT_MODEL)
+_log.info("Gemini API key loaded: %s", bool(GEMINI_API_KEY))
+_log.info("OpenRouter key loaded: %s", bool(OPENROUTER_API_KEY))
 _log.info("Blob token: %s", bool(BLOB_READ_WRITE_TOKEN))
 _log.info("Qdrant: %s", bool(QDRANT_URL and QDRANT_API_KEY))
 
@@ -1157,7 +1160,54 @@ def call_groq_vision(image_b64: str, system_prompt: str = SACRED_PROMPT, tempera
         except Exception as or_exc:
             _log.error("[OPENROUTER] %s", or_exc)
 
-    _log.warning("[MIMO-VISION] All vision models failed - trying text-only fallback")
+    _log.warning("[MIMO-VISION] OpenRouter and MiMo vision failed - trying Gemini")
+    
+    # === FALLBACK 3: Google Gemini Vision (free tier, 60 req/min) ===
+    if GEMINI_API_KEY:
+        try:
+            _log.info("[GEMINI] Trying Gemini vision model=%s", GEMINI_VISION_MODEL)
+            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_VISION_MODEL}:generateContent"
+            gemini_headers = {"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY}
+            
+            # Use both images as before: full-body masked + face close-up
+            gemini_payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": colored_prompt},
+                        {"inline_data": {"mime_type": "image/jpeg", "data": compressed}},
+                        {"inline_data": {"mime_type": "image/jpeg", "data": face_compressed}},
+                    ]
+                }],
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": CIPHER_MAX_TOKENS,
+                    "responseMimeType": "application/json",
+                }
+            }
+            
+            resp = requests.post(gemini_url, json=gemini_payload, headers=gemini_headers, timeout=30)
+            _log.info("[GEMINI] HTTP %s", resp.status_code)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                # Parse Gemini response format
+                if "candidates" in data and len(data["candidates"]) > 0:
+                    candidate = data["candidates"][0]
+                    if "content" in candidate and "parts" in candidate["content"]:
+                        raw_text = candidate["content"]["parts"][0].get("text", "")
+                        match = re.search(r"\{[\s\S]*\}", raw_text)
+                        if match:
+                            result = json.loads(match.group(0))
+                            result["source"] = "gemini_vision"
+                            _log.info("[GEMINI] Success! Style=%s Score=%s",
+                                      result.get("style_name"), result.get("style_score"))
+                            return result
+            else:
+                _log.warning("[GEMINI] HTTP %s: %s", resp.status_code, resp.text[:200])
+        except Exception as exc:
+            _log.error("[GEMINI] %s", exc)
+    
+    # === FALLBACK 4: Text-only fallback with extracted features ===
     
     # === FALLBACK: Use text model with comprehensive garment features ===
     try:
