@@ -111,6 +111,7 @@ export default function Analysis() {
   const [savedId, setSavedId] = useState<string | null>(null);
   const [analysisFailed, setAnalysisFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [history, setHistory] = useState<SavedAnalysis[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -141,6 +142,18 @@ export default function Analysis() {
       setImageFile(file);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("style_profiles")
+      .select("preferences")
+      .eq("user_id", user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.preferences) setUserProfile(data.preferences);
+      })
+      .catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -482,6 +495,21 @@ export default function Analysis() {
           >
             {data ? (
               <>
+                {/* ---- User Profile Context ---- */}
+                {userProfile && (
+                  <motion.div variants={childVariants} className="mb-4 p-3 rounded-xl bg-gradient-to-r from-purple-900/30 via-blue-900/30 to-cyan-900/30 border border-white/10">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-white/70">
+                      <span className="text-white/40 uppercase tracking-wider mr-1">Profile</span>
+                      {userProfile.bodyShape && <span className="px-2 py-1 rounded bg-white/5 border border-white/10">{userProfile.bodyShape}</span>}
+                      {userProfile.height && <span className="px-2 py-1 rounded bg-white/5 border border-white/10">{userProfile.height}</span>}
+                      {userProfile.budget && <span className="px-2 py-1 rounded bg-white/5 border border-white/10">${userProfile.budget}</span>}
+                      {userProfile.styleGoal && <span className="px-2 py-1 rounded bg-white/5 border border-white/10">{userProfile.styleGoal}</span>}
+                      {userProfile.lifestyle && <span className="px-2 py-1 rounded bg-white/5 border border-white/10">{userProfile.lifestyle}</span>}
+                      {userProfile.profession && <span className="px-2 py-1 rounded bg-white/5 border border-white/10">{userProfile.profession}</span>}
+                    </div>
+                  </motion.div>
+                )}
+
                 {/* ---- Fashion Hero Layout ---- */}
                 <motion.div variants={childVariants}>
                   <FashionHero

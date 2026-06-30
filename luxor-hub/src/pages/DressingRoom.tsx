@@ -170,6 +170,29 @@ export default function DressingRoomPage() {
     setGeneratedOutfits([]);
 
     try {
+      // Fetch user profile from onboarding data
+      let userProfile = {};
+      if (user) {
+        const { data: profile } = await supabase
+          .from("style_profiles")
+          .select("preferences")
+          .eq("user_id", user.id)
+          .single();
+        if (profile?.preferences) {
+          userProfile = {
+            bodyType: profile.preferences.bodyShape || "Average",
+            height: profile.preferences.height || "Average",
+            budget: profile.preferences.budget || "Mid-range",
+            lifestyle: profile.preferences.lifestyle || "Casual",
+            profession: profile.preferences.profession || "Professional",
+            styleGoal: profile.preferences.styleGoal || "Confident",
+            brands: Array.isArray(profile.preferences.brands) ? profile.preferences.brands.join(", ") : (profile.preferences.brands || "Any"),
+            styleMood: profile.preferences.styleMood || "",
+            ageRange: profile.preferences.ageRange || "",
+          };
+        }
+      }
+      
       const api = "https://python--libyausmle.replit.app";
       const genResp = await fetch(api + "/api/v1/dressing-room/generate", {
         method: "POST",
@@ -178,6 +201,7 @@ export default function DressingRoomPage() {
           occasion: selectedOccasion,
           weather: selectedWeather,
           color_palette: selectedPalette,
+          user_profile: userProfile,
         }),
       });
       if (!genResp.ok) throw new Error("Generation failed");
