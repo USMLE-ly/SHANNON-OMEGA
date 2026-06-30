@@ -447,11 +447,21 @@ After Step 3, generate a unique outfit description. Return ONLY JSON:
 
 Use the user's previous answers and style context for uniqueness."""
 
-CLOSET_PROMPT = """You are a personal stylist. Analyze the user's closet provided below. Pick 2 distinct, complete outfits that perfectly match the user's request: {occasion} occasion, {weather} weather, and {color_palette} color palette. Each outfit must include 1 Top, 1 Bottom, 1 Pair of Shoes, and optionally 1 Accessory or Dress.
+CLOSET_PROMPT = """You are a personal stylist. Analyze the user's closet provided below. Consider the user's body type, height, budget, lifestyle, profession, and style preferences if provided. Pick 2 distinct, complete outfits that perfectly match the user's request: {occasion} occasion, {weather} weather, and {color_palette} color palette. Each outfit must include 1 Top, 1 Bottom, 1 Pair of Shoes, and optionally 1 Accessory or Dress.
+
+User Profile:
+- Body Type: {body_type}
+- Height: {height}
+- Budget: {budget}
+- Lifestyle: {lifestyle}
+- Profession: {profession}
+- Style Goal: {style_goal}
+- Preferred Brands: {brands}
+
 Return ONLY a JSON array of 2 objects in this exact format:
 [
-  {{ "outfit_name": "Sporty Street Look", "item_ids": ["id1", "id2", "id3"], "reason": "why this works" }},
-  {{ "outfit_name": "Summer Lounge Vibe", "item_ids": ["id4", "id5", "id6"], "reason": "why this works" }}
+  {{ "outfit_name": "Sporty Street Look", "item_ids": ["id1", "id2", "id3"], "reason": "why this works considering the user profile" }},
+  {{ "outfit_name": "Summer Lounge Vibe", "item_ids": ["id4", "id5", "id6"], "reason": "why this works considering the user profile" }}
 ]"""
 
 REQUIRED_KEYS = [
@@ -2072,6 +2082,14 @@ def dressing_generate():
         occasion = data.get("occasion", "Casual")
         weather = data.get("weather", "Mild")
         color_palette = data.get("color_palette", "Neutrals")
+        profile = data.get("user_profile", {}) or {}
+        body_type = profile.get("bodyShape", "Average")
+        height = profile.get("height", "Average")
+        budget = profile.get("budget", "Mid-range")
+        lifestyle = profile.get("lifestyle", "Casual")
+        profession = profile.get("profession", "Professional")
+        style_goal = profile.get("styleGoal", "Confident")
+        brands = profile.get("brands", "Any")
 
         _log.info("[DRESSING] Generate: occasion=%s weather=%s palette=%s", occasion, weather, color_palette)
 
@@ -2087,7 +2105,7 @@ def dressing_generate():
         ])
 
         # Build prompt
-        prompt = CLOSET_PROMPT.format(occasion=occasion, weather=weather, color_palette=color_palette)
+        prompt = CLOSET_PROMPT.format(occasion=occasion, weather=weather, color_palette=color_palette, body_type=body_type, height=height, budget=budget, lifestyle=lifestyle, profession=profession, style_goal=style_goal, brands=brands)
         messages = [
             {"role": "user", "content": f"Here is the user's closet:\n{closet_summary}"},
             {"role": "user", "content": prompt},
