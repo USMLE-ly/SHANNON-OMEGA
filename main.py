@@ -2037,75 +2037,78 @@ def closet_delete():
 def dressing_generate():
     if request.method == "OPTIONS":
         return "", 204
-    data = request.get_json(silent=True) or {}
-    occasion = data.get("occasion", "Casual")
-    weather = data.get("weather", "Mild")
-    color_palette = data.get("color_palette", "Neutrals")
+    try:
+        data = request.get_json(silent=True) or {}
+        occasion = data.get("occasion", "Casual")
+        weather = data.get("weather", "Mild")
+        color_palette = data.get("color_palette", "Neutrals")
 
-    # Get all closet items from Qdrant
-    closet_items = qdrant_get_all_items()
-    if not closet_items:
-        return jsonify({"success": False, "error": "Closet is empty! Add items first."})
+        _log.info("[DRESSING] Generate: occasion=%s weather=%s palette=%s", occasion, weather, color_palette)
 
-    # Build closet summary for Groq
-    closet_summary = "\n".join([
-        f"- {i.get('label', 'Unknown')} ({i.get('color', '')} {i.get('type', '')}) [ID: {i.get('id', '')}]"
-        for i in closet_items
-    ])
+        # Get all closet items from Qdrant
+        closet_items = qdrant_get_all_items()
+        if not closet_items:
+            return jsonify({"success": False, "error": "Closet is empty! Add items first."})
 
-    # Build prompt
-    prompt = CLOSET_PROMPT.format(occasion=occasion, weather=weather, color_palette=color_palette)
-    messages = [
-        {"role": "user", "content": f"Here is the user's closet:\n{closet_summary}"},
-        {"role": "user", "content": prompt},
-    ]
+        # Build closet summary for Groq
+        closet_summary = "\n".join([
+            f"- {i.get('label', 'Unknown')} ({i.get('color', '')} {i.get('type', '')}) [ID: {i.get('id', '')}]"
+            for i in closet_items
+        ])
 
-    # Call Groq Text
-    result = call_groq_text(messages, temperature=0.7)
-    if not result:
-        return jsonify({"success": False, "error": "Could not generate outfit"})
+        # Build prompt
+        prompt = CLOSET_PROMPT.format(occasion=occasion, weather=weather, color_palette=color_palette)
+        messages = [
+            {"role": "user", "content": f"Here is the user's closet:\n{closet_summary}"},
+            {"role": "user", "content": prompt},
+        ]
 
-    # result should be a list of 2 outfits
-    # result should be a list of 2 outfits (or a dict with 'outfits' key)
-    outfit_list = result if isinstance(result, list) else (result.get("outfits") if isinstance(result, dict) else None)
-    if not isinstance(outfit_list, list) or not outfit_list:
-        return jsonify({"success": False, "error": "Could not compose outfits"})
+        # Call Groq Text
+        result = call_groq_text(messages, temperature=0.7)
+        if not result:
+            _log.error("[DRESSING] MiMo returned no result")
+            return jsonify({"success": False, "error": "Could not generate outfit"})
 
-    # Use cast to help pyright narrow the type correctly
-    outfit_list = cast("list[dict[str, Any]]", outfit_list)
+        _log.info("[DRESSING] MiMo returned %s", type(result).__name__)
 
-    # Look up items by ID for each outfit
-    outfit_options = []
-    for opt_count, opt in enumerate(outfit_list):
-        if opt_count >= 2:
-            break
-        item_ids = opt.get("item_ids", [])
-        items = []
-        for iid in item_ids:
-            item = qdrant_get_item(iid)
-            if item:
-                items.append({
-                    "id": item.get("id", ""),
-                    "label": item.get("label", ""),
-                    "type": item.get("type", ""),
-                    "color": item.get("color", ""),
-                    "image_url": item.get("image_url", ""),
-                })
-        outfit_options.append({
-            "outfit_name": opt.get("outfit_name", "Styled Look"),
-            "reason": opt.get("reason", ""),
-            "items": items,
+        # result should be a list of 2 outfits (or a dict with 'outfits' key)
+        outfit_list = result if isinstance(result, list) else (result.get("outfits") if isinstance(result, dict) else None)
+        if not isinstance(outfit_list, list) or not outfit_list:
+            _log.error("[DRESSING] Invalid outfit list format: %s", str(result)[:200])
+            return jsonify({"success": False, "error": "Could not compose outfits"})
+
+        # Look up items by ID for each outfit
+        outfit_options = []
+        for opt_count, opt in enumerate(outfit_list):
+            if opt_count >= 2:
+                break
+            item_ids = opt.get("item_ids", [])
+            items = []
+            for iid in item_ids:
+                item = qdrant_get_item(iid)
+                if item:
+                    items.append({
+                        "id": item.get("id", ""),
+                        "label": item.get("label", ""),
+                        "type": item.get("type", ""),
+                        "color": item.get("color", ""),
+                        "image_url": item.get("image_url", ""),
+                    })
+            outfit_options.append({
+                "outfit_name": opt.get("outfit_name", "Styled Look"),
+                "reason": opt.get("reason", ""),
+                "items": items,
+            })
+
+        _log.info("[DRESSING] Success: %d outfit options generated", len(outfit_options))
+        return jsonify({
+            "success": True,
+            "outfit_options": outfit_options,
         })
+    except Exception as exc:
+        _log.error("[DRESSING] Error: %s", exc, exc_info=True)
+        return jsonify({"success": False, "error": f"Generation failed: {str(exc)[:100]}"}), 500
 
-    return jsonify({
-        "success": True,
-        "outfit_options": outfit_options,
-    })
-
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Color Book PDF Upload
-# ---------------------------------------------------------------------------
 @app.route("/api/v1/upload-color-pdf", methods=["POST", "OPTIONS"])
 def upload_color_pdf():
     if request.method == "OPTIONS":
