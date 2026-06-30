@@ -68,9 +68,9 @@ CORS(app, origins=["*"])
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
-MIMO_API_KEY = os.getenv("MIMO_API_KEY", "sk-sryom8h5q2pvhbuibrgq5kfpnmqxrnuv5vjlnxkkic1u0oot")
+MIMO_API_KEY = os.getenv("MIMO_API_KEY", "")
 MIMO_API_URL = "https://api.xiaomimimo.com/v1/chat/completions"
-MIMO_VISION_MODEL = os.getenv("MIMO_VISION_MODEL", "mimo-v2-omni")
+MIMO_VISION_MODEL = os.getenv("MIMO_VISION_MODEL", "mimo-v2.5")
 MIMO_TEXT_MODEL = os.getenv("MIMO_TEXT_MODEL", "mimo-v2.5-pro")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_VISION_MODEL = "qwen/qwen-2.5-vl-72b-instruct:free"
@@ -355,14 +355,14 @@ def qdrant_get_item(item_id: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 SACRED_PROMPT = """ABSOLUTE REALITY RULES — CLASSIFY, DO NOT GENERATE:
 
-1. COLORS: Use EXACTLY the color of the garment. If the shirt is BLUE, write "Blue T-Shirt", NOT "Navy" or "Charcoal".
-2. GARMENTS: Identify the EXACT garment type. A T-Shirt is "T-Shirt", NOT "Sweater" or "Top".
-3. PER ITEM: For each garment, state its EXACT Color + Type + Material/Pattern if visible.
-4. BACKGROUND: The background has been REMOVED and replaced with WHITE. IGNORE the white. Look ONLY at the clothing on the person.
-5. COLOR LOCK: Only use precise color names from the official dictionary provided. Do NOT invent color names.
-6. ACCESSORIES: Look VERY carefully for ALL small accessories. Check for earrings, necklaces, bracelets, rings, watches, belts, scarves, hats, glasses, bags, and hair accessories. List EVERY visible accessory separately. Do NOT miss earrings or necklaces even if small.
-7. NEVER hallucinate garments or colors. If something is not visible, set it to "None".
-7. REALITY CHECK: If you cannot clearly identify an item, state exactly what is partially visible. Do NOT guess.
+1. **COLOR STRICTNESS**: Look at the EXACT color of each garment in the photo. If the top is a very dark color (near black), say "Black T-Shirt" NOT "Burgundy", "Navy", "Charcoal", "Brown", "Grey" or "Cream". Do NOT invent or enhance colors.
+2. **GARMENT TYPE**: Identify the EXACT garment type visible. A T-Shirt is "T-Shirt", NOT "Sweater", "Crop Top", or "Blouse". If you see jeans say "Jeans", NOT "Skirt" or "Pants". Be precise.
+3. **PER ITEM**: For each garment, state its EXACT Color + Type + Material/Pattern if clearly visible.
+4. **BACKGROUND REMOVED**: The first photo has the background REMOVED and replaced with WHITE. IGNORE the white completely. Look ONLY at the clothing.
+5. **COLOR DICTIONARY**: Use EXACT color names from the official dictionary provided. Never invent color names like "Burgundy", "Taupe", "Mauve", "Wine", "Crimson", "Bordeaux", "Charcoal", "Chocolate", "Cream", "Ivory", "Off-white", "Ecru", "Nude", "Flesh", "Skin", "Natural".
+6. **ACCESSORIES**: The second photo is a close-up of the upper body. Look VERY carefully for ALL accessories: earrings, necklaces, bracelets, rings, watches, belts, scarves, hats, glasses, bags, hair accessories. List EVERY visible one separately.
+7. **NO HALLUCINATION**: If a garment or accessory is NOT clearly visible, set it to "None". Do NOT guess or invent.
+8. **REALITY CHECK**: Before outputting each color, verify: "Is this the actual color of the fabric in the photo, or am I making it up?"
 
 Return ONLY this valid JSON with NO extra text:
 {
@@ -1569,23 +1569,44 @@ def map_analysis(result: Dict[str, Any]) -> Dict[str, Any]:
     pixel_colors = _get_dominant_colors_from_pixels(_image_b64_cache) if _image_b64_cache else []
     _log.info("[MAP] Pixel extraction returned: %s", pixel_colors)
 
-    # === STEP 2: Use items-based colors (pixel-backed) for meaningful output ===
+    # === STEP 2: PIXEL-AUTHORITATIVE Color Resolution ===
+    # Pixel colors from the masked image are the GROUND TRUTH.
+    # AI-generated colors are only used as secondary hints.
     if pixel_colors and len(pixel_colors) >= 1:
-        # Extract the first color word from each detected item for a meaningful color list
-        item_based_colors = []
-        for key in ["top_type", "bottom_type", "footwear"]:
-            val = result.get(key, "")
-            if val and val != "None" and val.lower() != "none":
-                first_word = val.split()[0].strip(',.!?;:').lower().capitalize()
-                if first_word and first_word not in item_based_colors:
-                    item_based_colors.append(first_word)
-        # Use item-based colors if they exist, fall back to pixel colors
-        if item_based_colors:
-            actual_colors = item_based_colors[:3]
-            _log.info("[MAP] Using item-derived colors: %s (pixel: %s)", actual_colors, pixel_colors)
-        else:
-            actual_colors = pixel_colors
-            _log.info("[MAP] Using REAL pixel colors: %s", pixel_colors)
+        actual_colors = pixel_colors[:3]
+        _log.info("[MAP] Using PIXEL colors as authoritative: %s", actual_colors)
+        
+        # Now correct AI item colors using pixel data
+        pixel_color_set = set(c.lower() for c in pixel_colors)
+        for item_key in ["top_type", "bottom_type", "footwear"]:
+            val = result.get(item_key, "")
+            if not val or val in ("None", "none", ""):
+                continue
+            words = val.split()
+            if len(words) < 2:
+                continue
+            
+            ai_color = words[0].strip(',.!?;:').lower()
+            
+            # If AI color is NOT in pixel colors, replace it with the dominant pixel color
+            if ai_color not in pixel_color_set:
+                best_match = pixel_colors[0]  # Default to first/darkest pixel color
+                # If bottom/footwear has specific matches, use those
+                if item_key == "bottom_type":
+                    for pc in pixel_colors:
+                        if pc.lower() in ('blue', 'black', 'navy', 'denim', 'grey', 'brown'):
+                            best_match = pc
+                            break
+                elif item_key == "footwear":
+                    for pc in pixel_colors:
+                        if pc.lower() in ('white', 'black', 'brown', 'beige', 'grey'):
+                            best_match = pc
+                            break
+                words[0] = best_match
+                corrected = ' '.join(words)
+                result[item_key] = corrected
+                _log.info("[PIXEL-CORRECT] %s: '%s' -> '%s' (pixel authority: %s)", 
+                          item_key, val, corrected, pixel_colors)
     else:
         # === STEP 3: Fallback to AI colors with validation ===
         actual_colors = result.get("actual_colors", [])
