@@ -8,9 +8,11 @@ import { ShimmerBgText } from "@/components/ui/shimmer-bg-text";
 function extractHighlightItem(text: string): { start: string; item: string; end: string } {
   if (!text) return { start: "Consider adding a ", item: "structured blazer", end: " for a more polished look." };
   
-  const addMatch = text.match(/Add\s+(?:a\s+)?(?:simple\s+)?(?:delicate\s+)?(?:layered\s+)?([a-zA-Z\s-]+?)\s+(?:to|for|and)/i);
+  // Match "Add a X to...", "Try adding a X...", "Try a X...", "Swap the X for..."
+  const addMatch = text.match(/(?:Add|adding)\s+(?:a\s+)?(?:simple\s+)?(?:delicate\s+)?(?:thin\s+)?(?:layered\s+)?([a-zA-Z\s-]+?)\s+(?:to|for|and|if|or)/i);
+  const tryMatch = text.match(/Try\s+(?:a\s+)?(?:adding\s+)?(?:a\s+)?(?:simple\s+)?(?:delicate\s+)?(?:thin\s+)?([a-zA-Z\s-]+?)\s+(?:to|for|and|if|or)/i);
   const swapMatch = text.match(/Swap\s+(?:the\s+)?([a-zA-Z\s]+?)\s+(?:for|with)/i);
-  const match = addMatch || swapMatch;
+  const match = addMatch || tryMatch || swapMatch;
   
   if (match) {
     const item = match[1].trim();
